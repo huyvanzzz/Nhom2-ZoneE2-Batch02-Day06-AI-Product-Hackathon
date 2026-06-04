@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="430" viewBox="0 0 980 430" role="img" aria-label="Flow as-is của MoMo Moni">
+  <defs>
+    <marker id="arrow-as-is" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569" />
+    </marker>
+    <style>
+      .title { font: 700 24px Arial, sans-serif; fill: #0f172a; }
+      .label { font: 700 15px Arial, sans-serif; fill: #0f172a; }
+      .text { font: 14px Arial, sans-serif; fill: #334155; }
+      .small { font: 13px Arial, sans-serif; fill: #475569; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 8; }
+      .weak { fill: #fff7ed; stroke: #ea580c; stroke-width: 2; rx: 8; }
+      .impact { fill: #fef2f2; stroke: #dc2626; stroke-width: 2; rx: 8; }
+      .arrow { stroke: #475569; stroke-width: 2; fill: none; marker-end: url(#arrow-as-is); }
+    </style>
+  </defs>
+
+  <text x="30" y="40" class="title">As-is: Moni hiểu context, nhưng chưa có drill-down action</text>
+
+  <rect x="30" y="80" width="185" height="105" class="box" />
+  <text x="50" y="110" class="label">User</text>
+  <text x="50" y="138" class="text">Hỏi tháng này</text>
+  <text x="50" y="158" class="text">tiêu nhiều nhất</text>
+  <text x="50" y="178" class="small">vào khoản nào?</text>
+
+  <path d="M215 132 L275 132" class="arrow" />
+
+  <rect x="285" y="80" width="185" height="105" class="box" />
+  <text x="305" y="110" class="label">Moni</text>
+  <text x="305" y="138" class="text">Trả lời đúng:</text>
+  <text x="305" y="158" class="text">tháng này chưa</text>
+  <text x="305" y="178" class="small">có giao dịch</text>
+
+  <path d="M470 132 L530 132" class="arrow" />
+
+  <rect x="540" y="80" width="190" height="105" class="box" />
+  <text x="560" y="110" class="label">User</text>
+  <text x="560" y="138" class="text">Hỏi ngắn gọn:</text>
+  <text x="560" y="158" class="text">"tháng trước"</text>
+  <text x="560" y="178" class="small">Moni vẫn giữ context</text>
+
+  <path d="M730 132 L790 132" class="arrow" />
+
+  <rect x="800" y="80" width="150" height="105" class="weak" />
+  <text x="820" y="110" class="label">Path yếu</text>
+  <text x="820" y="138" class="text">Có 583.769đ</text>
+  <text x="820" y="158" class="text">với 2 giao dịch</text>
+  <text x="820" y="178" class="small">nhưng chưa hiện</text>
+
+  <rect x="165" y="245" width="650" height="125" class="impact" />
+  <text x="190" y="278" class="label">User vẫn bị kẹt ở bước tiếp theo</text>
+  <text x="190" y="306" class="text">1. Không thấy ngay 2 giao dịch tháng trước.</text>
+  <text x="190" y="330" class="text">2. Không có nút "Xem theo nhóm" hoặc "Xem 2 giao dịch".</text>
+  <text x="190" y="354" class="text">3. Nếu phân loại sai, chưa có flow sửa nhãn và ghi nhớ correction.</text>
+</svg>

@@ -70,4 +70,10 @@ Hiện tại `handleUserInput` đã ưu tiên backend trước. Response backend
 
 ## Phân công
 
-Bạn có thể cập nhật thêm phần tên thành viên và trách nhiệm cụ thể của nhóm trước khi nộp repo.
+| Vai trò | Owner | Phần liên quan frontend |
+|---|---|---|
+| Report + test case demo | Lã Duy Anh | Đối chiếu frontend với SPEC, chuẩn bị flow demo |
+| UI | Dương Quang Minh | Homepage, chat widget, responsive layout, dashboard preview |
+| Backend | Trần Quốc Khánh | API contract để frontend gọi backend |
+| AI tools | Nguyễn Anh Kiệt | Response shape, quick replies, summary/triage data cho frontend render |
+| Repo / merge code, xây prompt | Nguyễn Văn Huy | Merge frontend với backend, kiểm tra cấu trúc nộp bài |
