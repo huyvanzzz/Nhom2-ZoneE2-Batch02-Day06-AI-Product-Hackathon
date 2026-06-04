@@ -1,0 +1,1 @@
+"""VinM backend prototype package."""
