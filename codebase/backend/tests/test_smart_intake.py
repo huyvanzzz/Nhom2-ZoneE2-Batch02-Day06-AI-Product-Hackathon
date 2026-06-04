@@ -169,6 +169,26 @@ async def test_general_symptom_flow_searches_after_enough_information():
 
 
 @pytest.mark.asyncio
+async def test_booking_details_are_extracted_and_confirmed_without_reasking():
+    service = SmartIntakeService()
+    session = service.create_session()
+
+    await service.handle_message(session.session_id, "Toi dau da day, day hoi kho tieu 2 tuan nay.")
+    await service.handle_message(session.session_id, "Me toi 58 tuoi, dau vua.")
+    await service.handle_message(session.session_id, "Dat lich kham truc tuyen")
+
+    response = await service.handle_message(
+        session.session_id,
+        "Tôi muốn khám tại Vin Smart City 15 giờ chiều nay",
+    )
+
+    assert response.response_type == "booking_confirmation"
+    assert response.case.preferred_hospital == "Vinmec Smart City"
+    assert response.case.preferred_time_detail == "15:00 chiều"
+    assert _normalize_text("lưu hồ sơ") in _normalize_text(response.assistant_text)
+
+
+@pytest.mark.asyncio
 async def test_ai_generates_follow_up_triage_and_doctor_summary():
     llm = FakeLLM()
     service = SmartIntakeService(llm=llm)

@@ -21,6 +21,47 @@ def _normalize_text(value: str) -> str:
     return ascii_text.replace("đ", "d").replace("Đ", "d")
 
 
+def _extract_time_label(normalized: str) -> str | None:
+    if "sang mai" in normalized:
+        return "Sáng mai"
+    if "chieu mai" in normalized:
+        return "Chiều mai"
+    if "toi nay" in normalized:
+        return "Tối nay"
+    if "cuoi tuan" in normalized:
+        return "Cuối tuần"
+
+    hour_match = re.search(r"\b(\d{1,2})\s*(gio|h)\b(?:\s*(chieu|toi|sang|trua))?", normalized)
+    if not hour_match:
+        return None
+
+    hour = int(hour_match.group(1))
+    suffix = hour_match.group(3) or ""
+    if suffix in {"chieu", "toi"} and hour < 12:
+        hour += 12
+    suffix_label = {
+        "chieu": "chiều",
+        "toi": "tối",
+        "sang": "sáng",
+        "trua": "trưa",
+    }.get(suffix, "")
+    if suffix_label:
+        return f"{hour:02d}:00 {suffix_label}".strip()
+    return f"{hour:02d}:00"
+
+
+def _extract_hospital_label(normalized: str) -> str | None:
+    if any(term in normalized for term in ["times city", "vinmec times city"]):
+        return "Vinmec Times City"
+    if any(term in normalized for term in ["smart city", "vin smart city", "vinmec smart city"]):
+        return "Vinmec Smart City"
+    if "central park" in normalized:
+        return "Vinmec Central Park"
+    if "da nang" in normalized:
+        return "Vinmec Da Nang"
+    return None
+
+
 class IntakeSession(BaseModel):
     session_id: str
     case_id: str
@@ -55,6 +96,8 @@ class BookingDraft(BaseModel):
     specialty: str
     hospital: str
     preferred_time: str
+    preferred_time_detail: str = "unknown"
+    requested_at: str = Field(default_factory=_now_iso)
     booking_status: Literal["draft", "cancelled", "confirmed"] = "draft"
     doctor_summary_attached: bool = True
 
@@ -78,6 +121,7 @@ class IntakeCase(BaseModel):
     booking_intent: bool = False
     preferred_hospital: str = "unknown"
     preferred_time: str = "unknown"
+    preferred_time_detail: str = "unknown"
     doctor_summary: str = ""
     evidence_context: dict = Field(default_factory=dict)
     sources: list[SourceRef] = Field(default_factory=list)
@@ -167,18 +211,11 @@ class IntakeExtractorTool:
 
         if "dat lich" in normalized or "kham ao" in normalized:
             slots["booking_intent"] = True
-        if "times city" in normalized:
-            slots["preferred_hospital"] = "Vinmec Times City"
-        elif "central park" in normalized:
-            slots["preferred_hospital"] = "Vinmec Central Park"
-        elif "da nang" in normalized:
-            slots["preferred_hospital"] = "Vinmec Da Nang"
-        if "sang mai" in normalized:
-            slots["preferred_time"] = "Sang mai"
-        elif "chieu mai" in normalized:
-            slots["preferred_time"] = "Chieu mai"
-        elif "cuoi tuan" in normalized:
-            slots["preferred_time"] = "Cuoi tuan"
+        if hospital := _extract_hospital_label(normalized):
+            slots["preferred_hospital"] = hospital
+        if preferred_time := _extract_time_label(normalized):
+            slots["preferred_time"] = preferred_time
+            slots["preferred_time_detail"] = preferred_time
 
         return slots
 
@@ -360,8 +397,17 @@ class ChatResponseSummaryTool:
         if case.booking_intent and case.preferred_hospital == "unknown":
             return IntakeResponse(
                 response_type="ask_booking_details",
-                assistant_text="Bạn muốn khám tại cơ sở nào và vào khoảng thời gian nào?",
-                quick_replies=["Vinmec Times City", "Vinmec Central Park", "Vinmec Đà Nẵng", "Chưa chắc"],
+                assistant_text=(
+                    "Mình đã ghi nhận nhu cầu đặt lịch. "
+                    "Bạn muốn khám tại cơ sở Vinmec nào và vào khung giờ cụ thể nào? "
+                    "Ví dụ: Vinmec Times City, 15 giờ chiều nay."
+                ),
+                quick_replies=[
+                    "Vinmec Times City, 15 giờ chiều nay",
+                    "Vinmec Smart City, 15 giờ chiều nay",
+                    "Vinmec Central Park, sáng mai",
+                    "Chưa chắc",
+                ],
                 case=case,
                 patient=patient,
                 doctor_summary=case.doctor_summary,
@@ -375,7 +421,9 @@ class ChatResponseSummaryTool:
                     "Mình xác nhận lại thông tin trước khi tạo lịch khám nháp: "
                     f"người bệnh {patient.relationship_to_customer}, tuổi {patient.age_or_birth_year}, "
                     f"khoa {case.suggested_specialty}, cơ sở {case.preferred_hospital}, "
-                    f"thời gian {case.preferred_time}. Bạn muốn tạo lịch nháp không?"
+                    f"thời gian {case.preferred_time_detail if case.preferred_time_detail != 'unknown' else case.preferred_time}. "
+                    "Mình đã có đủ thông tin cơ bản và sẽ lưu hồ sơ, giờ khám, tóm tắt ca và nguồn tham khảo. "
+                    "Bạn muốn tạo lịch nháp không?"
                 ),
                 quick_replies=["Xác nhận", "Sửa thông tin", "Hủy"],
                 case=case,
@@ -388,8 +436,9 @@ class ChatResponseSummaryTool:
             return IntakeResponse(
                 response_type="booking_created",
                 assistant_text=(
-                    "Mình đã tạo lịch khám nháp. Thông tin triệu chứng và tóm tắt ca bệnh "
-                    "sẽ được lưu kèm để bác sĩ/CSKH nắm trước khi hỗ trợ."
+                    "Mình đã tạo lịch khám nháp và lưu lại hồ sơ người dùng, thời gian khám chi tiết, "
+                    "tóm tắt ca bệnh, nguồn tham khảo và trạng thái đặt lịch. "
+                    "Bác sĩ/CSKH sẽ xem được đầy đủ thông tin trước khi hỗ trợ tiếp."
                 ),
                 quick_replies=["Xem lại thông tin", "Kết thúc"],
                 case=case,
@@ -411,31 +460,42 @@ class ChatResponseSummaryTool:
         )
 
     async def _safe_guidance_text(self, case: IntakeCase, patient: PatientInfo) -> str:
+        source_text = self._format_sources(case.sources)
         fallback = (
-            "Hiện chưa thấy dấu hiệu khẩn cấp từ thông tin bạn cung cấp. "
+            "Mình đã kiểm tra ngữ cảnh y tế liên quan và hiện chưa thấy dấu hiệu khẩn cấp rõ ràng từ thông tin bạn cung cấp. "
             "Đây là nhận định sơ bộ, không phải chẩn đoán y khoa. "
-            "Bạn có thể nghỉ ngơi, uống đủ nước, theo dõi triệu chứng và "
-            f"nên khám {case.suggested_specialty} nếu triệu chứng kéo dài hoặc nặng lên. "
-            "Bạn có muốn mình hỗ trợ tạo lịch khám nháp không?"
+            f"Dựa trên triệu chứng hiện tại và nguồn tham khảo đã kiểm tra{source_text}, "
+            f"bạn nên ưu tiên khám {case.suggested_specialty} tại Vinmec sớm hơn nếu triệu chứng kéo dài, lặp lại hoặc tăng mức độ. "
+            "Nếu có sốt cao, khó thở, đau ngực, nôn ra máu, đi ngoài phân đen hoặc lơ mơ, hãy đi cấp cứu ngay. "
+            "Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat."
         )
         if not self.llm:
             return fallback
 
         prompt = (
-            "You are Vinmec Smart Intake Assistant. Do not diagnose disease, "
-            "do not prescribe medication, and do not override hardcoded red-flag rules.\n"
+            "Pha: safe_guidance.\n"
+            "Vai trò: trợ lý tiếp nhận Vinmec, không chẩn đoán bệnh, không kê thuốc, không bỏ qua hardcoded red flags.\n"
+            "Mục tiêu: phản hồi dài hơn 4-6 câu bằng tiếng Việt, dựa trên nguồn đã tìm kiếm để giải thích ngắn gọn vì sao nên ưu tiên khám sớm hay có thể theo dõi tại nhà.\n"
+            "Bắt buộc gồm 4 phần:\n"
+            "1) Tóm tắt tình trạng hiện tại của người bệnh.\n"
+            "2) Nêu nhận định sơ bộ về mức độ ưu tiên khám.\n"
+            "3) Dựa trên evidence_context và sources để gợi ý chuyên khoa hoặc cơ sở Vinmec phù hợp.\n"
+            "4) Hỏi người dùng có muốn tạo lịch khám nháp trong chat không.\n"
+            "Nếu nguồn chưa đủ thì nói rõ là đang dùng ngữ cảnh tham khảo và chỉ đề xuất an toàn.\n"
             f"Patient relation: {patient.relationship_to_customer}\n"
             f"Age or birth year: {patient.age_or_birth_year}\n"
             f"Main symptom: {case.main_symptom}\n"
             f"Duration: {case.duration}\n"
             f"Severity: {case.severity}\n"
             f"Suggested specialty: {case.suggested_specialty}\n"
+            f"Priority: {case.priority}\n"
             f"Evidence context: {case.evidence_context}\n"
-            "Return a short Vietnamese chat reply with safe initial guidance, "
-            "specialty suggestion, and a question asking whether the user wants a virtual booking."
+            f"Sources: {self._format_sources(case.sources)}\n"
+            "Return a short Vietnamese chat reply with safe initial guidance, specialty suggestion, and a question asking whether the user wants a virtual booking.\n"
         )
         try:
-            return await self.llm.complete(prompt)
+            assistant_text = await self.llm.complete(prompt)
+            return self._enrich_safe_guidance_text(assistant_text, case)
         except Exception:
             return fallback
 
@@ -449,18 +509,38 @@ class ChatResponseSummaryTool:
         if not self.llm:
             return fallback
         prompt = (
-            "Ask one follow-up question for a Vinmec intake chat in Vietnamese.\n"
-            "Do not diagnose. Ask only for missing fields and keep it short.\n"
+            "Pha: ask_more.\n"
+            "Chỉ hỏi lại thông tin còn thiếu, không gọi search, không chẩn đoán, không nói về nguồn, không kê thuốc.\n"
+            "Chỉ được hỏi đúng 1 câu ngắn bằng tiếng Việt.\n"
             f"Missing fields: {missing}\n"
             f"Current symptom: {case.main_symptom}\n"
             f"Current duration: {case.duration}\n"
             f"Current severity: {case.severity}\n"
+            "Ask one follow-up question for a Vinmec intake chat in Vietnamese.\n"
             f"Patient age: {patient.age_or_birth_year}\n"
         )
         try:
             return await self.llm.complete(prompt)
         except Exception:
             return fallback
+
+    def _format_sources(self, sources: list[SourceRef]) -> str:
+        if not sources:
+            return ""
+        top_sources = ", ".join(source.title for source in sources[:3])
+        return f" ({top_sources})"
+
+    def _enrich_safe_guidance_text(self, assistant_text: str, case: IntakeCase) -> str:
+        normalized = _normalize_text(assistant_text)
+        if "nguon" in normalized and "vinmec" in normalized and "dat lich" in normalized:
+            return assistant_text
+
+        source_text = self._format_sources(case.sources)
+        tail = [
+            f"Dựa trên nguồn tham khảo đã kiểm tra{source_text}, mình gợi ý ưu tiên khám {case.suggested_specialty} tại Vinmec sớm hơn nếu triệu chứng kéo dài hoặc tăng mức độ.",
+            "Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat và lưu đầy đủ hồ sơ, giờ khám chi tiết, tóm tắt ca bệnh cùng nguồn tham khảo.",
+        ]
+        return assistant_text.rstrip() + "\n\n" + " ".join(tail)
 
 
 class SmartIntakeService:
@@ -551,6 +631,7 @@ class SmartIntakeService:
         patient = self.patients[case.patient_id]
         case.preferred_hospital = hospital
         case.preferred_time = preferred_time
+        case.preferred_time_detail = preferred_time
         booking = self._create_booking(case, patient)
         case.booking_id = booking.booking_id
         case.case_status = "booking_requested"
@@ -610,7 +691,15 @@ class SmartIntakeService:
             patient.relationship_to_customer = str(relation)
         if age := slots.get("age_or_birth_year"):
             patient.age_or_birth_year = str(age)
-        for key in ["main_symptom", "duration", "severity", "suggested_specialty", "preferred_hospital", "preferred_time"]:
+        for key in [
+            "main_symptom",
+            "duration",
+            "severity",
+            "suggested_specialty",
+            "preferred_hospital",
+            "preferred_time",
+            "preferred_time_detail",
+        ]:
             if value := slots.get(key):
                 setattr(case, key, value)
         if slots.get("booking_intent"):
@@ -632,6 +721,7 @@ class SmartIntakeService:
             specialty=case.suggested_specialty,
             hospital=case.preferred_hospital,
             preferred_time=case.preferred_time,
+            preferred_time_detail=case.preferred_time_detail,
         )
         self.bookings[booking.booking_id] = booking
         self._log(case.case_id, "booking_draft_created", booking.booking_id)
@@ -647,14 +737,20 @@ class SmartIntakeService:
             f"Người bệnh: {patient.relationship_to_customer}, {patient.age_or_birth_year} tuổi. "
             f"Triệu chứng chính: {case.main_symptom}. Thời gian: {case.duration}. "
             f"Mức độ: {case.severity}. Red flag: {case.red_flag_status}. "
-            f"Chuyên khoa gợi ý: {case.suggested_specialty}. Trạng thái: {case.case_status}."
+            f"Chuyên khoa gợi ý: {case.suggested_specialty}. "
+            f"Cơ sở: {case.preferred_hospital}. Giờ khám: {case.preferred_time_detail if case.preferred_time_detail != 'unknown' else case.preferred_time}. "
+            f"Trạng thái: {case.case_status}. "
+            f"Nguồn tham khảo: {self.response_builder._format_sources(case.sources)}"
         )
         if not self.llm or not use_ai:
             return fallback
         prompt = (
+            "Pha: doctor_summary.\n"
+            "Tạo tóm tắt bàn giao cho bác sĩ/CSKH bằng tiếng Việt, 5-8 câu, ngắn gọn nhưng đủ chi tiết.\n"
+            "Không chẩn đoán bệnh, không kê thuốc.\n"
+            "Bắt buộc nhắc: quan hệ người bệnh, tuổi, triệu chứng chính, thời gian, mức độ, trạng thái red flag, "
+            "ưu tiên khám, chuyên khoa gợi ý, cơ sở/giờ khám nếu có, và nguồn tham khảo đã dùng.\n"
             "Create doctor handoff summary in Vietnamese for Vinmec CSKH/doctor dashboard.\n"
-            "Do not diagnose. Include patient relation, age, symptoms, duration, severity, "
-            "red flag status, suggested specialty, booking status, and evidence used.\n"
             f"Patient: {patient.model_dump()}\n"
             f"Case: {case.model_dump()}\n"
         )
@@ -672,9 +768,11 @@ class SmartIntakeService:
         if not self.llm:
             return case
         prompt = (
+            "Pha: triage_classification.\n"
+            "Chỉ phân loại nguy cơ sơ bộ thành low/medium/high dựa trên triệu chứng, thời gian, mức độ và ngữ cảnh đã tìm kiếm.\n"
+            "Không chẩn đoán bệnh, không bỏ qua hardcoded red flags, không kê thuốc.\n"
+            "Trả về đúng 1 dòng theo dạng '<low|medium|high>: reason'.\n"
             "Classify preliminary risk for a Vinmec intake case in Vietnamese.\n"
-            "Return one line in format '<low|medium|high>: reason'. "
-            "Do not diagnose disease and do not override hardcoded red flags.\n"
             f"Patient: {patient.model_dump()}\n"
             f"Case: {case.model_dump()}\n"
             f"Evidence context: {case.evidence_context}\n"
