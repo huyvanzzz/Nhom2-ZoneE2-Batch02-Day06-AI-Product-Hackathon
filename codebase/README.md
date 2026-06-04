@@ -44,3 +44,39 @@ cd codebase/backend
 - `POST /v1/assist` accepts `{"query":"..."}` and returns a structured answer with sources.
 - The flow is: validate request, search Tavily, scrape Firecrawl, answer with the OpenAI-compatible gateway, notify Telegram.
 - If the AI gateway fails, the backend returns `status="error"` instead of crashing.
+
+### Day 6 Smart Intake Assistant
+
+The Day 6 agent is an in-memory Vinmec Smart Intake MVP. It supports normal intake, red-flag emergency handoff, virtual booking draft, doctor dashboard, and audit logs.
+
+Core endpoints:
+
+- `POST /chat/session`
+- `POST /chat/message`
+- `GET /chat/session/{session_id}/messages`
+- `GET /cases/{case_id}`
+- `PATCH /cases/{case_id}`
+- `POST /booking/draft`
+- `GET /booking/{booking_id}`
+- `PATCH /booking/{booking_id}`
+- `GET /doctor/cases`
+- `GET /doctor/cases/{case_id}`
+- `POST /doctor/cases/{case_id}/notes`
+- `PATCH /doctor/cases/{case_id}/status`
+- `GET /debug/cases/{case_id}/logs`
+
+Demo payloads:
+
+```powershell
+$session = Invoke-RestMethod -Method Post http://127.0.0.1:8000/chat/session
+
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/chat/message `
+  -ContentType "application/json" `
+  -Body (@{ session_id=$session.session_id; content="Toi dau da day, day hoi kho tieu 2 tuan nay." } | ConvertTo-Json)
+
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/chat/message `
+  -ContentType "application/json" `
+  -Body (@{ session_id=$session.session_id; content="Me toi 58 tuoi, dau vua." } | ConvertTo-Json)
+
+Invoke-RestMethod http://127.0.0.1:8000/doctor/cases
+```
