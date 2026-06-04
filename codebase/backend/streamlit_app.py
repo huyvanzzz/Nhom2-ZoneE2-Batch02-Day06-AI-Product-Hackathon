@@ -6,11 +6,13 @@ import streamlit as st
 
 
 DEFAULT_BACKEND_URL = os.getenv("DAY6_BACKEND_URL", "http://127.0.0.1:8000")
+DEFAULT_API_TIMEOUT_SECONDS = float(os.getenv("DAY6_API_TIMEOUT_SECONDS", "90"))
 
 
 def api_request(method: str, base_url: str, path: str, json: dict | None = None) -> Any:
     url = f"{base_url.rstrip('/')}{path}"
-    with httpx.Client(timeout=10.0) as client:
+    timeout = httpx.Timeout(DEFAULT_API_TIMEOUT_SECONDS, connect=5.0)
+    with httpx.Client(timeout=timeout) as client:
         response = client.request(method, url, json=json)
         response.raise_for_status()
         return response.json()
@@ -42,15 +44,35 @@ def reset_chat(base_url: str) -> None:
 def submit_chat_message(base_url: str, content: str) -> None:
     session = get_or_create_session(base_url)
     st.session_state.chat_messages.append({"role": "user", "content": content})
-    response = send_message(base_url, session["session_id"], content)
-    st.session_state.last_response = response
-    st.session_state.chat_messages.append(
-        {
-            "role": "assistant",
-            "content": response["assistant_text"],
-            "response_type": response["response_type"],
-        }
-    )
+    try:
+        with st.spinner("Đang kiểm tra triệu chứng, ngữ cảnh y tế và đề xuất phù hợp..."):
+            response = send_message(base_url, session["session_id"], content)
+        st.session_state.last_response = response
+        st.session_state.chat_messages.append(
+            {
+                "role": "assistant",
+                "content": response["assistant_text"],
+            }
+        )
+    except httpx.TimeoutException:
+        st.session_state.last_response = None
+        st.session_state.chat_messages.append(
+            {
+                "role": "assistant",
+                "content": (
+                    "Mình đang xử lý lâu hơn bình thường. Bạn vui lòng thử lại sau vài giây "
+                    "hoặc kiểm tra backend và AI gateway đã chạy chưa."
+                ),
+            }
+        )
+    except httpx.RequestError as exc:
+        st.session_state.last_response = None
+        st.session_state.chat_messages.append(
+            {
+                "role": "assistant",
+                "content": f"Không kết nối được tới backend. Chi tiết: {exc}",
+            }
+        )
 
 
 def run_normal_booking_flow(base_url: str) -> dict:
@@ -113,7 +135,7 @@ st.markdown(
 )
 
 st.title("Trợ lý tiếp nhận thông tin khám Vinmec")
-st.caption("AI hỏi bổ sung thông tin, kiểm tra dấu hiệu nguy hiểm, tìm nguồn tham khảo và hỗ trợ tạo lịch khám nháp.")
+st.caption("AI hỏi bổ sung thông tin, kiểm tra dấu hiệu nguy hiểm, tìm ngữ cảnh y tế và hỗ trợ tạo lịch khám nháp.")
 
 with st.sidebar:
     backend_url = st.text_input("Địa chỉ backend", value=DEFAULT_BACKEND_URL)
@@ -122,7 +144,7 @@ with st.sidebar:
         try:
             st.success(api_request("GET", backend_url, "/health"))
         except Exception as exc:
-            st.error(f"Backend error: {exc}")
+            st.error(f"Lỗi backend: {exc}")
     if col_reset.button("Chat mới"):
         reset_chat(backend_url)
         st.rerun()
