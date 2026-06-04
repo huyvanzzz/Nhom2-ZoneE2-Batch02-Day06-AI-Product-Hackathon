@@ -1,103 +1,72 @@
-# Batch 02 · Day 06 — AI Product Hackathon
+# Day06-LớpC401-Nhóm E2-nhóm2
 
-> SPEC → Prototype → Demo. Hôm nay không có bài giảng mới — hôm nay chứng minh: SPEC là giả thuyết, prototype là bằng chứng, demo là thuyết phục.
+## Thành viên
 
----
+| Mã HV | Họ và tên | Vai trò dự kiến |
+|---|---|---|
+| 2A202600869 | Lã Duy Anh | SPEC / report, test case demo |
+| 2A202600686 | Dương Quang Minh | UI |
+| 2A202600679 | Trần Quốc Khánh | Backend |
+| 2A202600773 | Nguyễn Anh Kiệt | AI tools |
+| 2A202600677 | Nguyễn Văn Huy | Repo / merge code, xây prompt |
 
-## Cách nộp bài
+## Sản phẩm
 
-**Đại diện nhóm tạo MỘT repo nhóm**, đặt tên:
+**AI Smart Intake Assistant cho Vinmec**
 
+Prototype đề xuất một trợ lý AI intake thông minh cho người dùng Vinmec/MyVinmec. Thay vì chatbot hỏi cộc lốc hoặc trả lời rỗng khi người dùng mô tả triệu chứng tự nhiên, sản phẩm sẽ hỏi làm rõ theo ngữ cảnh, phát hiện dấu hiệu nguy hiểm, gợi ý chuyên khoa/cơ sở phù hợp, dẫn sang đặt lịch khám ảo và lưu tóm tắt ban đầu cho bác sĩ hoặc CSKH.
+
+Prototype không chẩn đoán bệnh, không kê đơn thuốc và không thay thế bác sĩ. AI chỉ hỗ trợ tiếp nhận thông tin, định hướng chuyên khoa và tạo tóm tắt trước khám.
+
+## Track
+
+Healthcare - ứng dụng tham chiếu: Vinmec / MyVinmec / VinmecCare.
+
+## Tài liệu
+
+- SPEC sản phẩm: [spec/spec.md](spec/spec.md)
+- Hướng dẫn SPEC gốc: [spec/README.md](spec/README.md)
+- Code prototype: [codebase/](codebase/)
+- Luật hackathon: [hackathon-rules.md](hackathon-rules.md)
+- Evidence Pack Day 5: [02-group-spec/evidence-pack.md](02-group-spec/evidence-pack.md)
+- Thin SPEC Day 5: [02-group-spec/thin-spec.md](02-group-spec/thin-spec.md)
+
+## Cách chạy prototype
+
+Backend:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".\codebase\backend[dev]"
+cd codebase\backend
+..\..\.venv\Scripts\python.exe -m uvicorn vinm_backend.main:app --reload
 ```
-Day06-Lop-NhomXX
+
+Frontend:
+
+```powershell
+cd codebase\frontend
+python -m http.server 4173
 ```
 
-Ví dụ: `Day06-C401-Nhom03`
+Sau đó mở `http://localhost:4173`. Backend chạy ở `http://127.0.0.1:8000`.
 
-- **README của repo nhóm phải liệt kê đủ thành viên** — mỗi người gồm **mã học viên + họ và tên**.
-- Đại diện nhóm nộp **link repo** lên LMS. **Hạn nộp: 23:59 ngày 04/06/2026.**
-- Mỗi thành viên cần **ít nhất một commit thực chất** trong repo (không commit = mất điểm cá nhân).
+## Công nghệ / API
 
-### Cấu trúc repo nhóm
+- Frontend: HTML5, CSS3, Vanilla JavaScript.
+- Backend: FastAPI, Pydantic, Uvicorn.
+- Storage: SQLite cho case snapshot và audit logs.
+- AI: OpenAI-compatible Chat Completions API qua `OpenAIGatewayClient`.
+- Search context: Tavily + Firecrawl, ưu tiên Vinmec/trusted medical domains.
+- API chính: `/chat/session`, `/chat/message`, `/doctor/cases`, `/booking/draft`, `/doctor/dashboard/stats`.
+- Fallback: rule-based extractor/red flag/summary khi AI hoặc search external lỗi.
 
-```
-Day06-Lop-NhomXX/
-├── README.md        ← Danh sách thành viên (mã HV + họ tên) + mô tả ngắn sản phẩm
-├── spec/            ← SPEC sản phẩm (xem hướng dẫn trong spec/)
-└── codebase/        ← Toàn bộ code prototype (xem hướng dẫn trong codebase/)
-```
+## Phân công
 
----
-
-## Lịch ngày 06 — 04/06/2026
-
-| Giờ | Mốc | Cần đạt |
-|-----|-----|---------|
-| Sáng | Build | Bắt đầu từ SPEC nhẹ đã làm ở Day 5 |
-| **11:00** | Checkpoint 1 | **Show được ít nhất mockup/prototype chạy được** |
-| **13:00** | Checkpoint 2 | **Lắp được AI vào ít nhất 1 flow** |
-| **15:30** | Checkpoint 3 | **Chuẩn bị xong tài liệu demo + slide** |
-| **16:00** | Demo round | Trình bày trong zone, 10 phút/nhóm |
-
----
-
-## Tracks
-
-Mỗi nhóm chọn một lĩnh vực, lấy một app thật trong đó để soi và cải tiến:
-
-| Track | App thật gợi ý |
-|-------|----------------|
-| **Learning OS** (Vin AI Thực Chiến) | LMS khóa học, Discord lớp |
-| **Travel & Hospitality** | Vinpearl, Sun World / SunGroup |
-| **Food & Local Delivery** | ShopeeFood, GrabFood, BeFood, Xanh SM Ngon |
-| **Personal Finance** | MoMo, ZaloPay, app ngân hàng |
-| **Healthcare** | Vinmec, Long Châu, Pharmacity |
-
-> Các nhóm **cùng track** ngồi **cùng một zone** khi demo.
-
----
-
-## Kỳ vọng mỗi demo
-
-1. **Product Canvas** — giới thiệu ý tưởng và nỗi đau (painpoint) của người dùng.
-2. **Demo full luồng end-to-end** — show cả happy case lẫn error case.
-3. **AI chạy thật trong ít nhất 1 flow** — không chỉ mockup tĩnh.
-
----
-
-## Demo round (16:00)
-
-- Mỗi nhóm **10 phút** (≈ 5 phút trình bày + 5 phút Q&A).
-- Các nhóm khác **phản biện, đặt câu hỏi**.
-- **Đánh giá chéo qua form**: thành viên các nhóm khác chấm điểm.
-- **Tổng kết**: nhóm điểm cao nhất mỗi zone được **bonus**; còn thời gian thì các nhóm điểm cao **present trước cả lớp**; giảng viên đánh giá.
-
-Chi tiết luật chơi + cách chấm: [`hackathon-rules.md`](hackathon-rules.md)
-
----
-
-## Chấm điểm (Day 5 + Day 6 = 100 điểm)
-
-| Hạng mục | Điểm |
-|----------|------|
-| SPEC | 25 |
-| Prototype | 15 |
-| Demo Day | 25 |
-| Bài tập UX (Day 5) | 10 |
-| Phản ánh cá nhân (reflection) | 25 |
-
-**Điều kiện chặn:** prototype không có lời gọi AI thật → giới hạn 4/10 · không có commit → mất điểm cá nhân · không giải thích được phần mình khi bị hỏi → 0 điểm demo cá nhân.
-
----
-
-## Tài liệu trong repo này
-
-| Folder / file | Nội dung |
-|---------------|----------|
-| [`hackathon-rules.md`](hackathon-rules.md) | Luật chơi, lịch, demo round, cách chấm |
-| [`spec/`](spec/) | Hướng dẫn viết SPEC sản phẩm (nối tiếp SPEC nhẹ Day 5) |
-| [`codebase/`](codebase/) | Yêu cầu nộp code prototype |
-
----
-
-*Batch 02 · Ngày 06 — VinUni A20 · AI Thực Chiến · 2026*
+| Vai trò | Việc chính | Owner |
+|---|---|---|
+| Report + test case demo | Viết SPEC/report, cập nhật theo codebase, chuẩn bị bộ test case demo và expected result cho 4 flow | Lã Duy Anh |
+| UI | Thiết kế và build giao diện chat intake, quick replies, màn hình kết quả/gợi ý chuyên khoa, booking draft và dashboard hiển thị | Dương Quang Minh |
+| Backend | Xây API, lưu session/case/message/booking, xử lý orchestration và kết nối dashboard | Trần Quốc Khánh |
+| AI tools | Xây tools, extractor, search context, triage logic và red-flag rule phối hợp với backend | Nguyễn Anh Kiệt |
+| Repo / merge code, xây prompt | Quản lý repo, review/merge code, xử lý conflict, kiểm tra cấu trúc nộp bài và hướng dẫn chạy | Nguyễn Văn Huy |

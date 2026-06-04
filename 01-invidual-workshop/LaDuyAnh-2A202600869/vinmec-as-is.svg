@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">VinmecCare As-Is Flow</title>
+  <desc id="desc">Current VinmecCare flow showing the conversation drifting from specialty advice to branch and hotline selection.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fbfb; }
+      .title { font: 700 30px Arial, sans-serif; fill: #102a43; }
+      .subtitle { font: 400 16px Arial, sans-serif; fill: #52616b; }
+      .section { font: 700 14px Arial, sans-serif; fill: #0f766e; letter-spacing: 0; }
+      .box { stroke-width: 2; rx: 16; }
+      .user { fill: #e0f2f1; stroke: #2aa8a1; }
+      .bot { fill: #f8fafc; stroke: #94a3b8; }
+      .weak { fill: #fff7ed; stroke: #f97316; }
+      .fail { fill: #fef2f2; stroke: #ef4444; }
+      .note { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 14; }
+      .text { font: 700 16px Arial, sans-serif; fill: #1f2937; }
+      .small { font: 400 14px Arial, sans-serif; fill: #475569; }
+      .label { font: 700 12px Arial, sans-serif; fill: #ffffff; }
+      .okTag { fill: #0f766e; rx: 10; }
+      .warnTag { fill: #f97316; rx: 10; }
+      .failTag { fill: #ef4444; rx: 10; }
+      .arrow { stroke: #64748b; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .line { stroke: #d7dee8; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1200" height="760"/>
+  <text class="title" x="60" y="58">Sketch As-Is - VinmecCare hiện tại</text>
+  <text class="subtitle" x="60" y="86">User hỏi nên khám khoa nào, nhưng flow bị kéo sang chọn cơ sở và hotline.</text>
+
+  <line class="line" x1="60" y1="122" x2="1140" y2="122"/>
+  <text class="section" x="80" y="150">INPUT CỦA USER</text>
+  <text class="section" x="424" y="150">BOT XỬ LÝ</text>
+  <text class="section" x="768" y="150">KẾT QUẢ HIỆN TẠI</text>
+
+  <rect class="box user" x="80" y="178" width="280" height="118"/>
+  <text class="text" x="104" y="214">1. User hỏi triệu chứng</text>
+  <text class="small" x="104" y="242">"Tôi bị đau bụng âm ỉ 2 ngày,</text>
+  <text class="small" x="104" y="264">buồn nôn nhẹ, nên khám khoa nào?"</text>
+
+  <line class="arrow" x1="360" y1="237" x2="420" y2="237"/>
+
+  <rect class="box bot" x="420" y="178" width="280" height="118"/>
+  <text class="text" x="444" y="214">2. Bot hỏi tuổi</text>
+  <text class="small" x="444" y="242">"Vui lòng cung cấp tuổi</text>
+  <text class="small" x="444" y="264">hoặc năm sinh..."</text>
+  <rect class="okTag" x="444" y="314" width="104" height="24"/>
+  <text class="label" x="462" y="331">điểm tốt</text>
+
+  <line class="arrow" x1="700" y1="237" x2="760" y2="237"/>
+
+  <rect class="box user" x="760" y="178" width="280" height="118"/>
+  <text class="text" x="784" y="214">3. User trả lời</text>
+  <text class="small" x="784" y="244">"23 tuổi"</text>
+  <text class="small" x="784" y="266">Context triệu chứng vẫn còn đó.</text>
+
+  <line class="arrow" x1="900" y1="296" x2="900" y2="354"/>
+
+  <rect class="box weak" x="760" y="354" width="280" height="132"/>
+  <text class="text" x="784" y="390">4. Bot hỏi cơ sở</text>
+  <text class="small" x="784" y="418">"Vui lòng cung cấp tên cơ sở</text>
+  <text class="small" x="784" y="440">bệnh viện Vinmec..."</text>
+  <text class="small" x="784" y="462">Chưa gợi ý chuyên khoa.</text>
+  <rect class="warnTag" x="784" y="504" width="112" height="24"/>
+  <text class="label" x="802" y="521">lệch intent</text>
+
+  <line class="arrow" x1="760" y1="420" x2="700" y2="420"/>
+
+  <rect class="box fail" x="420" y="354" width="280" height="132"/>
+  <text class="text" x="444" y="390">5. User nhập sai cơ sở</text>
+  <text class="small" x="444" y="418">"Vinmec sài đồng"</text>
+  <text class="small" x="444" y="440">Bot lặp lại yêu cầu nhập cơ sở.</text>
+  <text class="small" x="444" y="462">Không gợi ý sửa gần đúng.</text>
+  <rect class="failTag" x="444" y="504" width="128" height="24"/>
+  <text class="label" x="462" y="521">correction yếu</text>
+
+  <line class="arrow" x1="700" y1="486" x2="760" y2="584"/>
+
+  <rect class="box fail" x="760" y="584" width="280" height="104"/>
+  <text class="text" x="784" y="620">6. Nếu nhập đúng cơ sở</text>
+  <text class="small" x="784" y="648">Bot đưa phiếu hỗ trợ</text>
+  <text class="small" x="784" y="670">và danh sách hotline.</text>
+
+  <rect class="note" x="80" y="584" width="560" height="104"/>
+  <text class="text" x="104" y="620">Điểm gãy chính</text>
+  <text class="small" x="104" y="648">Câu hỏi gốc "nên khám khoa nào?" chưa được xử lý.</text>
+  <text class="small" x="104" y="670">Flow thiếu triage triệu chứng, red flag và gợi ý chuyên khoa.</text>
+</svg>

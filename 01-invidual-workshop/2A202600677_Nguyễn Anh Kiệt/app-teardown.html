@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>App Teardown - Vietnam Airlines NEO</title>
+  <style>
+    :root {
+      --bg: #eef4f8;
+      --paper: #ffffff;
+      --ink: #142033;
+      --muted: #5f6f86;
+      --line: #d9e2ec;
+      --brand: #0b6fa4;
+      --brand-soft: #e1f0f8;
+      --good: #0f9f6e;
+      --warn: #d97706;
+      --risk: #b42318;
+      --violet: #3949ab;
+      --shadow: 0 18px 44px rgba(20, 32, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(11, 111, 164, 0.12), transparent 28%),
+        linear-gradient(180deg, #f6fbff 0%, var(--bg) 100%);
+      color: var(--ink);
+      line-height: 1.65;
+    }
+
+    .page {
+      width: 1120px;
+      max-width: calc(100% - 32px);
+      margin: 28px auto 40px;
+      background: var(--paper);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero {
+      padding: 40px 44px 28px;
+      background:
+        linear-gradient(135deg, rgba(11, 111, 164, 0.12), rgba(57, 73, 171, 0.08)),
+        #f8fbfd;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      color: var(--brand);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.15;
+    }
+
+    .subtitle {
+      margin: 14px 0 0;
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .section {
+      padding: 30px 44px 0;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 24px;
+      color: #103b52;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 19px;
+    }
+
+    h4 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      color: #17334a;
+    }
+
+    p { margin: 0 0 14px; }
+
+    .meta {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 10px 14px;
+      padding: 18px 20px;
+      background: #f7fbfd;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    .meta strong { color: #16354c; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .summary-card {
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .summary-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .summary-card .value {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+
+    .tag-good {
+      color: #106d4d;
+      background: #ecfdf3;
+      border-color: #b7ebd0;
+    }
+
+    .tag-warn {
+      color: #9a4d09;
+      background: #fff5e8;
+      border-color: #ffd5a3;
+    }
+
+    .tag-risk {
+      color: #9e1c15;
+      background: #fff0ef;
+      border-color: #f4b8b4;
+    }
+
+    .tag-correct {
+      color: #3040a5;
+      background: #eef0ff;
+      border-color: #cfd5ff;
+    }
+
+    .note {
+      padding: 18px 20px;
+      border-left: 5px solid var(--brand);
+      background: #f6fbfe;
+      border-radius: 14px;
+      margin-top: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #e8f3f9;
+      color: #14384d;
+    }
+
+    tr:nth-child(even) td {
+      background: #fafcfe;
+    }
+
+    .path-card,
+    .flow-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(20, 32, 51, 0.04);
+    }
+
+    .path-card img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #0f172a;
+    }
+
+    .path-body {
+      padding: 18px;
+    }
+
+    .paths {
+      display: grid;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .path-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 18px 18px 0;
+    }
+
+    .prompt,
+    .quote,
+    .flow {
+      margin-top: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #f7fafc;
+      border: 1px solid var(--line);
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    .quote {
+      background: #101a29;
+      color: #e6eef8;
+      border-color: #22314c;
+    }
+
+    .decision {
+      padding: 18px 20px;
+      background: #eef1ff;
+      border-left: 5px solid var(--violet);
+      border-radius: 14px;
+      margin-top: 14px;
+      font-weight: 700;
+    }
+
+    .finding {
+      padding: 18px 20px;
+      background: #fff7ed;
+      border-left: 5px solid var(--warn);
+      border-radius: 14px;
+      margin-top: 14px;
+    }
+
+    .flow-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 16px;
+    }
+
+    .checklist {
+      margin: 0;
+      padding-left: 22px;
+    }
+
+    @media (max-width: 860px) {
+      .section, .hero { padding-left: 22px; padding-right: 22px; }
+      .summary,
+      .flow-grid {
+        grid-template-columns: 1fr;
+      }
+      .meta {
+        grid-template-columns: 1fr;
+      }
+      .path-head {
+        flex-direction: column;
+      }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        box-shadow: none;
+        border-radius: 0;
+      }
+      .path-card, .flow-card, table, .flow-grid { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <div class="eyebrow">Workshop - Mổ App AI Thật</div>
+      <h1>App Teardown: Vietnam Airlines NEO</h1>
+      <p class="subtitle">
+        Mục tiêu của teardown này là kiểm tra chatbot như một sản phẩm AI thật: nó có giúp người dùng đi tiếp trong workflow hay chỉ trả lời chính sách chung. Bài làm bám đúng 4 path yêu cầu: happy, low-confidence, failure và correction, đồng thời dùng screenshot chat thực tế làm evidence.
+      </p>
+    </div>
+
+    <div class="section">
+      <h2>1. Thông tin</h2>
+      <div class="meta">
+        <strong>Sản phẩm được chọn:</strong><span>Vietnam Airlines - NEO chatbot</span>
+        <strong>AI feature:</strong><span>Chatbot hỗ trợ đặt vé, hành lý, đổi tên, chuyến nối tiếp, và hỗ trợ đặc biệt</span>
+        <strong>Cách truy cập:</strong><span>Website Vietnam Airlines</span>
+        <strong>Ngôn ngữ test:</strong><span>Tiếng Việt</span>
+        <strong>Ngày test:</strong><span>03/06/2026</span>
+        <strong>User được hứa giúp:</strong><span>Hành khách cần tìm thông tin nhanh để tự xử lý các bước trước chuyến bay hoặc khi có sự cố</span>
+        <strong>Promise của sản phẩm:</strong><span>Trả lời nhanh, đúng chính sách, và hỗ trợ người dùng tự đi tiếp mà không cần chờ người thật ở các case phổ biến</span>
+        <strong>Kỳ vọng khi dùng thật:</strong><span>Bot không chỉ trả lời FAQ mà còn dẫn user đến next step rõ ràng, nhất là trong case gấp hoặc nhiều rủi ro</span>
+      </div>
+
+      <div class="summary">
+        <div class="summary-card">
+          <div class="label">Happy path</div>
+          <div class="value">Đặt vé một chiều</div>
+          <span class="tag tag-good">Đủ dùng</span>
+        </div>
+        <div class="summary-card">
+          <div class="label">Low-confidence path</div>
+          <div class="value">Delay + lỡ chuyến nối tiếp</div>
+          <span class="tag tag-warn">Thiếu recovery</span>
+        </div>
+        <div class="summary-card">
+          <div class="label">Failure path</div>
+          <div class="value">Máy tạo oxy + MEDIF</div>
+          <span class="tag tag-risk">Near failure</span>
+        </div>
+        <div class="summary-card">
+          <div class="label">Correction path</div>
+          <div class="value">Sửa tên trên vé</div>
+          <span class="tag tag-correct">Có correction yếu</span>
+        </div>
+      </div>
+
+      <div class="note">
+        Reality quan sát được: bot làm khá ổn với các câu hỏi policy đơn giản và có intent rõ. Điểm gãy xuất hiện khi case cần clarify thêm ngữ cảnh, cần recovery step cụ thể, hoặc có yếu tố rủi ro cao như y tế và chuyến bay ngày mai.
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>2. Tổng quan 4 paths</h2>
+      <table>
+        <tr>
+          <th>Path</th>
+          <th>Câu hỏi test</th>
+          <th>Phân loại</th>
+          <th>Quan sát ngắn</th>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td>Đặt vé một chiều từ TP.HCM ra Hà Nội</td>
+          <td>Happy</td>
+          <td>Bot hiểu intent ngay và đưa ra flow đặt vé khá rõ ràng.</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Delay dẫn đến lỡ chuyến bay nối tiếp</td>
+          <td>Low-confidence</td>
+          <td>Bot đúng chủ đề nhưng không hỏi thêm booking context và thiếu recovery step cụ thể.</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Bay ngày mai với máy tạo oxy di động và xe lăn</td>
+          <td>Failure / near failure</td>
+          <td>Case rủi ro cao nhưng bot không trả lời dứt điểm khả năng được bay và không tạo handoff đủ mạnh.</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Sai một chữ trong họ trên vé quốc tế</td>
+          <td>Correction</td>
+          <td>Bot có đưa cách sửa nhưng chưa đủ chắc về fee và không làm rõ urgency trước giờ bay.</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>3. Chi tiết từng path</h2>
+
+      <div class="paths">
+        <section class="path-card">
+          <div class="path-head">
+            <h3>Path 1 - Happy path: đặt vé một chiều</h3>
+            <span class="tag tag-good">Happy</span>
+          </div>
+          <img src="Screenshot%202026-06-03%20153743.png" alt="Happy path screenshot" />
+          <div class="path-body">
+            <div class="prompt"><strong>Prompt:</strong> Tôi muốn đặt vé máy bay một chiều từ TP.HCM ra Hà Nội vào tuần sau. Tôi phải làm như thế nào?</div>
+            <div class="quote"><strong>Observation:</strong> Bot hướng dẫn theo từng bước: vào website/app, chọn điểm đi - điểm đến, chọn một chiều, chọn ngày, chọn chuyến bay, nhập thông tin, thanh toán. Bot còn đưa thêm kênh đại lý, phòng vé, hotline.</div>
+            <table>
+              <tr>
+                <th>Kỳ vọng</th>
+                <td>Bot hiểu đúng intent đặt vé và giúp user đi tiếp trong flow mà không cần hỏi lại vô ích.</td>
+              </tr>
+              <tr>
+                <th>Thực tế</th>
+                <td>Bot làm đúng. Đây là một path AI trả lời tự tin, rõ bước tiếp theo và đủ để user tiếp tục workflow.</td>
+              </tr>
+              <tr>
+                <th>User thấy gì khi AI đúng</th>
+                <td>Một flow rõ ràng, nhiều kênh thực hiện, không bị kẹt ở mức “đọc chính sách chung”.</td>
+              </tr>
+              <tr>
+                <th>Nhận xét</th>
+                <td>Đây là case tốt nhất để làm happy path vì bot vừa đúng intent vừa có hành động tiếp theo cụ thể.</td>
+              </tr>
+            </table>
+          </div>
+        </section>
+
+        <section class="path-card">
+          <div class="path-head">
+            <h3>Path 2 - Low-confidence path: delay và lỡ chuyến nối tiếp</h3>
+            <span class="tag tag-warn">Low-confidence</span>
+          </div>
+          <img src="Screenshot%202026-06-03%20153827.png" alt="Low-confidence path screenshot" />
+          <div class="path-body">
+            <div class="prompt"><strong>Prompt:</strong> Chuyến bay của tôi bị delay nên tôi bị lỡ chuyến bay nối tiếp. Bây giờ tôi phải làm gì, và tôi có được bồi thường hoặc hoàn tiền không?</div>
+            <div class="quote"><strong>Observation:</strong> Bot nói về cách liên hệ nếu mua vé qua website/app hoặc qua nơi khác, sau đó giải thích chung về bồi thường và hoàn tiền, rồi đưa link transit information.</div>
+            <table>
+              <tr>
+                <th>Kỳ vọng</th>
+                <td>Bot nên hỏi thêm: cùng một booking hay vé riêng, chuyến nối tiếp còn hôm nay không, user đang ở sân bay hay chưa, và nên làm gì ngay bây giờ.</td>
+              </tr>
+              <tr>
+                <th>Thực tế</th>
+                <td>Bot đúng chủ đề, nhưng chỉ đưa policy và contact channel. Bot không phân biệt đủ bối cảnh để dẫn user vào next step.</td>
+              </tr>
+              <tr>
+                <th>Điểm user bị kẹt</th>
+                <td>User vẫn không chắc phải đi đến quầy nào, gọi ai trước, hay tự xử lý trên booking bằng cách nào.</td>
+              </tr>
+              <tr>
+                <th>Vì sao là low-confidence</th>
+                <td>Bot không sai hẳn, nhưng nó không tự nhận diện được rằng mình còn thiếu thông tin và cần clarify hoặc show options.</td>
+              </tr>
+            </table>
+          </div>
+        </section>
+
+        <section class="path-card">
+          <div class="path-head">
+            <h3>Path 3 - Failure path: máy tạo oxy di động, xe lăn, chuyến bay ngày mai</h3>
+            <span class="tag tag-risk">Failure / near failure</span>
+          </div>
+          <img src="Screenshot%202026-06-03%20154021.png" alt="Failure path screenshot" />
+          <div class="path-body">
+            <div class="prompt"><strong>Prompt:</strong> Tôi cần bay vào ngày mai với máy tạo oxy di động và xe lăn. Tôi có thể mang cả hai lên máy bay không, và tôi có cần nộp giấy tờ y tế gì trước chuyến bay không?</div>
+            <div class="quote"><strong>Observation:</strong> Bot trả lời rằng có thể mang theo hai thiết bị, giải thích về xe lăn và MEDIF, nhưng không trả lời dứt điểm user có còn kịp bay ngày mai hay không và không hỏi các thông tin an toàn quan trọng như model thiết bị, loại pin, hay tình trạng nộp clearance.</div>
+            <table>
+              <tr>
+                <th>Kỳ vọng</th>
+                <td>Bot phải nhận diện đây là case hỗ trợ y tế gấp, hỏi rõ các điều kiện còn thiếu và chuyển sang flow an toàn: checklist, handoff, nguồn policy chính xác, và decision gate.</td>
+              </tr>
+              <tr>
+                <th>Thực tế</th>
+                <td>Bot nói khá tự tin, nhưng chỉ dừng ở mức policy tổng quát. Với một case rủi ro cao, điều này gần failure vì user có thể hiểu nhầm rằng chỉ cần chuẩn bị giấy tờ là đủ.</td>
+              </tr>
+              <tr>
+                <th>Điểm user bị kẹt</th>
+                <td>User không biết câu trả lời thật cho câu quan trọng nhất: ngày mai còn được bay không, và nếu cần xử lý gấp thì phải làm gì ngay lúc này.</td>
+              </tr>
+              <tr>
+                <th>Vì sao dùng được làm failure</th>
+                <td>Workshop không bắt buộc phải có crash hoàn toàn. Ở đây, “near failure trong case rủi ro cao” là đủ mạnh vì hậu quả nếu hiểu sai có thể rất lớn.</td>
+              </tr>
+            </table>
+          </div>
+        </section>
+
+        <section class="path-card">
+          <div class="path-head">
+            <h3>Path 4 - Correction path: sửa sai một chữ trong họ</h3>
+            <span class="tag tag-correct">Correction</span>
+          </div>
+          <img src="Screenshot%202026-06-03%20154150.png" alt="Correction path screenshot" />
+          <div class="path-body">
+            <div class="prompt"><strong>Prompt:</strong> Tôi đặt vé quốc tế rồi nhưng bị sai 1 chữ trong họ. Hộ chiếu là NGUYEN nhưng trên vé là NGUYEM. Tôi có thể sửa online không và có mất phí không?</div>
+            <div class="quote"><strong>Observation:</strong> Bot nói có thể sửa, không sửa online được, phải liên hệ Vietnam Airlines hoặc nơi mua vé, và nêu mức phí 50.000 VND cho hành trình quốc tế.</div>
+            <table>
+              <tr>
+                <th>Kỳ vọng</th>
+                <td>Bot nên nói rõ đây là lỗi typo nhỏ, không phải chuyển vé cho người khác; nêu rõ không sửa online, cảnh báo phải xử lý trước giờ bay, và cung cấp fee đúng cùng các kênh hỗ trợ.</td>
+              </tr>
+              <tr>
+                <th>Thực tế</th>
+                <td>Bot có hỗ trợ correction flow ở mức cơ bản, nhưng câu trả lời vẫn còn yếu vì chưa làm rõ thời hạn xử lý và thông tin phí có dấu hiệu không nhất quán với source khác.</td>
+              </tr>
+              <tr>
+                <th>Correction có được giữ không</th>
+                <td>Có theo nghĩa product biết user đang muốn sửa tên, nhưng chưa cho thấy hệ thống ghi nhận và xử lý correction theo kiểu hẹp, an toàn, và đáng tin tuyệt đối.</td>
+              </tr>
+              <tr>
+                <th>Ý nghĩa cho teardown</th>
+                <td>Đây là correction path dùng được vì nó cho thấy bot có một đường sửa lỗi, nhưng độ tin cậy của output correction vẫn chưa đủ tốt để user yên tâm tự quyết định.</td>
+              </tr>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>4. Finding thành quyết định product</h2>
+      <div class="decision">
+        Weak path chính được chọn để cải thiện: Path 3 - máy tạo oxy di động + xe lăn cho chuyến bay ngày mai.
+      </div>
+      <div class="finding">
+        Khi user hỏi về việc mang máy tạo oxy di động và xe lăn cho chuyến bay ngày mai, AI trả lời bằng policy chung và wording khá tự tin thay vì chuyển sang guided safety flow. Hậu quả là user vẫn không biết mình có còn đủ điều kiện bay hay không và phải làm gì ngay lúc này. Lỗi thuộc layer Safety + UX Recovery + Intent. Nên sửa bằng requirement rõ ràng: nhận diện case y tế khẩn, hỏi thông tin còn thiếu, show checklist, đưa source đúng, và handoff sang người thật ngay khi decision không thể xác nhận tự động.
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>5. Sketch as-is / to-be</h2>
+      <div class="flow-grid">
+        <div class="flow-card">
+          <div class="path-body">
+            <h3>As-is</h3>
+            <div class="flow">User hỏi về máy tạo oxy di động + xe lăn cho chuyến bay ngày mai
+↓
+Bot trả lời quy định chung về thiết bị và MEDIF
+↓
+Bot không hỏi thêm model thiết bị, pin, trạng thái clearance, hay mức độ khẩn
+↓
+Bot không đưa decision rõ ràng về việc còn đủ điều kiện bay hay không
+↓
+User phải tự suy luận và tự gọi hỗ trợ
+↓
+Điểm gãy: user không có next step an toàn đủ cụ thể</div>
+          </div>
+        </div>
+
+        <div class="flow-card">
+          <div class="path-body">
+            <h3>To-be</h3>
+            <div class="flow">User hỏi về máy tạo oxy di động + xe lăn cho chuyến bay ngày mai
+↓
+Bot nhận diện đây là case y tế gấp
+↓
+Bot hỏi 4 dữ kiện tối thiểu: model thiết bị, loại pin, có cần dùng trên chuyến bay không, đã nộp MEDIF chưa
+↓
+Bot đưa checklist và source button đúng
+↓
+Nếu thiếu clearance hoặc quá sát giờ bay, bot chuyển ngay sang urgent handoff
+↓
+User biết chính xác có thể tiếp tục, cần bổ sung gì, hoặc phải liên hệ ai ngay</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>6. Đề xuất sửa</h2>
+      <table>
+        <tr>
+          <th>Vấn đề</th>
+          <th>Đề xuất product</th>
+        </tr>
+        <tr>
+          <td>Bot trả lời policy chung trong case gấp</td>
+          <td>Thêm urgent mode cho các trigger như “ngày mai”, “MEDIF”, “máy tạo oxy”, “xe lăn”, “check-in rồi”, “lỡ chuyến”.</td>
+        </tr>
+        <tr>
+          <td>Thiếu clarify khi context chưa đủ</td>
+          <td>Buộc bot hỏi lại các trường tối thiểu trước khi trả lời kết luận trong case high-risk.</td>
+        </tr>
+        <tr>
+          <td>Thiếu recovery step</td>
+          <td>Thêm action-oriented response: quầy nào, hotline nào, giấy tờ gì, thao tác nào cần làm ngay.</td>
+        </tr>
+        <tr>
+          <td>Correction path chưa đáng tin hoàn toàn</td>
+          <td>Gắn source xác thực cho fee, cutoff time, và các điều kiện name correction để tránh trả lời lệch.</td>
+        </tr>
+        <tr>
+          <td>Bot không thể hiện rõ mức độ chắc chắn</td>
+          <td>Thêm low-confidence state: “Tôi cần thêm thông tin để trả lời an toàn” thay vì trả lời như đã chắc chắn.</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>7. Tự kiểm trước khi nộp</h2>
+      <ul class="checklist">
+        <li>Có screenshot evidence cụ thể, không chỉ tóm tắt bằng chữ.</li>
+        <li>Có đủ 4 paths: happy, low-confidence, failure, correction.</li>
+        <li>Finding đã được viết thành product decision, không chỉ là nhận xét.</li>
+        <li>Có as-is và to-be flow.</li>
+        <li>Có một câu nói rõ finding này sẽ đổi gì trong SPEC: thêm guided safety flow và urgent handoff cho case y tế / disruption.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
