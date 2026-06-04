@@ -12,3 +12,4 @@ var/
 *.egg-info/
 codebase/backend/var/
 codebase/var/
+.env.example
