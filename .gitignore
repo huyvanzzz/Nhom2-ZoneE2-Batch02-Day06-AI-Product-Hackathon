@@ -2,3 +2,6 @@
 node_modules/
 .env
 *.log
+*.egg-info/
+codebase/backend/var/
+codebase/var/
