@@ -172,9 +172,18 @@ class IntakeExtractorTool:
 
 
 class MedicalContextSearchTool:
-    def search(self, case: IntakeCase) -> tuple[dict, list[SourceRef]]:
+    def __init__(self, tavily=None, firecrawl=None):
+        self.tavily = tavily
+        self.firecrawl = firecrawl
+
+    async def search(self, case: IntakeCase) -> tuple[dict, list[SourceRef]]:
+        fallback_context = {
+            "warning_signs": [],
+            "safe_guidance_points": [],
+            "possible_specialties": [],
+        }
         if case.suggested_specialty == "Noi Tieu hoa":
-            context = {
+            fallback_context = {
                 "warning_signs": [
                     "dau bung du doi",
                     "non ra mau",
@@ -188,15 +197,40 @@ class MedicalContextSearchTool:
                 ],
                 "possible_specialties": ["Noi Tieu hoa"],
             }
-            sources = [
+            fallback_sources = [
                 SourceRef(
                     title="Vinmec digestive symptom guidance",
                     url="https://www.vinmec.com/",
                     summary="Trusted context placeholder for demo intake guidance.",
                 )
             ]
-            return context, sources
-        return {"warning_signs": [], "safe_guidance_points": [], "possible_specialties": []}, []
+        else:
+            fallback_sources = []
+
+        if not self.tavily:
+            return fallback_context, fallback_sources
+
+        query = (
+            f"{case.main_symptom} {case.duration} warning signs when to seek care "
+            "Vinmec NHS Mayo Clinic MedlinePlus"
+        )
+        try:
+            sources = await self.tavily.search(query)
+            scraped_points = []
+            if self.firecrawl:
+                for source in sources[:2]:
+                    try:
+                        scraped_points.append(await self.firecrawl.scrape(source.url))
+                    except Exception:
+                        continue
+            context = {
+                **fallback_context,
+                "search_query": query,
+                "scraped_context": scraped_points[:2],
+            }
+            return context, sources[:5] or fallback_sources
+        except Exception:
+            return fallback_context, fallback_sources
 
 
 class TriageSafetyRuleTool:
@@ -237,7 +271,10 @@ class TriageSafetyRuleTool:
 
 
 class ChatResponseSummaryTool:
-    def build(self, case: IntakeCase, patient: PatientInfo, booking: BookingDraft | None) -> IntakeResponse:
+    def __init__(self, llm=None):
+        self.llm = llm
+
+    async def build(self, case: IntakeCase, patient: PatientInfo, booking: BookingDraft | None) -> IntakeResponse:
         if case.red_flag_status == "confirmed":
             text = (
                 "Trieu chung ban mo ta co the la dau hieu can xu ly khan cap. "
@@ -313,14 +350,10 @@ class ChatResponseSummaryTool:
                 sources=case.sources,
             )
 
+        assistant_text = await self._safe_guidance_text(case, patient)
         return IntakeResponse(
             response_type="safe_guidance",
-            assistant_text=(
-                "Hien chua thay dau hieu khan cap tu thong tin ban cung cap. "
-                "Ban co the an nhe, chia nho bua, tranh do cay/dau mo/ruou bia, "
-                f"va nen kham {case.suggested_specialty} neu trieu chung keo dai. "
-                "Ban co muon minh ho tro tao lich kham ao khong?"
-            ),
+            assistant_text=assistant_text,
             quick_replies=["Dat lich kham ao", "Chon thoi gian khac", "Toi muon hoi them"],
             case=case,
             patient=patient,
@@ -328,13 +361,41 @@ class ChatResponseSummaryTool:
             sources=case.sources,
         )
 
+    async def _safe_guidance_text(self, case: IntakeCase, patient: PatientInfo) -> str:
+        fallback = (
+            "Hien chua thay dau hieu khan cap tu thong tin ban cung cap. "
+            "Ban co the an nhe, chia nho bua, tranh do cay/dau mo/ruou bia, "
+            f"va nen kham {case.suggested_specialty} neu trieu chung keo dai. "
+            "Ban co muon minh ho tro tao lich kham ao khong?"
+        )
+        if not self.llm:
+            return fallback
+
+        prompt = (
+            "You are Vinmec Smart Intake Assistant. Do not diagnose disease, "
+            "do not prescribe medication, and do not override hardcoded red-flag rules.\n"
+            f"Patient relation: {patient.relationship_to_customer}\n"
+            f"Age or birth year: {patient.age_or_birth_year}\n"
+            f"Main symptom: {case.main_symptom}\n"
+            f"Duration: {case.duration}\n"
+            f"Severity: {case.severity}\n"
+            f"Suggested specialty: {case.suggested_specialty}\n"
+            f"Evidence context: {case.evidence_context}\n"
+            "Return a short Vietnamese chat reply with safe initial guidance, "
+            "specialty suggestion, and a question asking whether the user wants a virtual booking."
+        )
+        try:
+            return await self.llm.complete(prompt)
+        except Exception:
+            return fallback
+
 
 class SmartIntakeService:
-    def __init__(self):
+    def __init__(self, llm=None, context_search: MedicalContextSearchTool | None = None):
         self.extractor = IntakeExtractorTool()
-        self.context_search = MedicalContextSearchTool()
+        self.context_search = context_search or MedicalContextSearchTool()
         self.triage = TriageSafetyRuleTool()
-        self.response_builder = ChatResponseSummaryTool()
+        self.response_builder = ChatResponseSummaryTool(llm=llm)
         self.sessions: dict[str, IntakeSession] = {}
         self.patients: dict[str, PatientInfo] = {}
         self.cases: dict[str, IntakeCase] = {}
@@ -376,9 +437,9 @@ class SmartIntakeService:
 
         slots = self.extractor.extract(content)
         self._apply_slots(case, patient, slots)
-        if case.main_symptom != "unknown":
-            case.evidence_context, case.sources = self.context_search.search(case)
         case = self.triage.classify(case, content)
+        if case.main_symptom != "unknown" and case.red_flag_status != "confirmed":
+            case.evidence_context, case.sources = await self.context_search.search(case)
         case.doctor_summary = self._build_doctor_summary(case, patient)
         self.cases[case.case_id] = case
 
@@ -389,7 +450,7 @@ class SmartIntakeService:
             case.case_status = "booking_requested"
             self.cases[case.case_id] = case
 
-        response = self.response_builder.build(case, patient, booking)
+        response = await self.response_builder.build(case, patient, booking)
         self.messages[session_id].append(ChatMessage(role="assistant", content=response.assistant_text))
         self._log(case.case_id, "assistant_response", response.response_type)
         return response

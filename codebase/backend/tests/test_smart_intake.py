@@ -1,6 +1,41 @@
 import pytest
 
 from vinm_backend.intake import SmartIntakeService
+from vinm_backend.models import SourceRef
+
+
+class FakeLLM:
+    def __init__(self):
+        self.prompts = []
+
+    async def complete(self, prompt: str):
+        self.prompts.append(prompt)
+        return (
+            "AI: Hien chua thay dau hieu khan cap. Nen an nhe, uong du nuoc, "
+            "theo doi va dat lich Noi Tieu hoa neu keo dai."
+        )
+
+
+class FakeMedicalSearch:
+    def __init__(self):
+        self.queries = []
+
+    async def search(self, case):
+        self.queries.append(case.main_symptom)
+        return (
+            {
+                "warning_signs": ["non ra mau", "phan den"],
+                "safe_guidance_points": ["an nhe", "uong du nuoc"],
+                "possible_specialties": ["Noi Tieu hoa"],
+            },
+            [
+                SourceRef(
+                    title="Digestive guidance",
+                    url="https://example.com/digestive",
+                    summary="when to seek care",
+                )
+            ],
+        )
 
 
 @pytest.mark.asyncio
@@ -60,3 +95,37 @@ def test_doctor_notes_and_audit_logs_are_stored():
 
     assert service.get_case(session.case_id).doctor_notes == ["CSKH called patient."]
     assert logs[0].event == "session_created"
+
+
+@pytest.mark.asyncio
+async def test_intake_chat_uses_ai_and_search_context_for_safe_guidance():
+    llm = FakeLLM()
+    search = FakeMedicalSearch()
+    service = SmartIntakeService(llm=llm, context_search=search)
+    session = service.create_session()
+
+    await service.handle_message(
+        session.session_id,
+        "Toi dau da day, day hoi kho tieu 2 tuan nay.",
+    )
+    response = await service.handle_message(
+        session.session_id,
+        "Me toi 58 tuoi, dau vua.",
+    )
+
+    assert response.assistant_text.startswith("AI:")
+    assert response.sources[0].url == "https://example.com/digestive"
+    assert search.queries == ["dau da day, day hoi, kho tieu", "dau da day, day hoi, kho tieu"]
+    assert "Evidence context" in llm.prompts[-1]
+
+
+@pytest.mark.asyncio
+async def test_red_flag_does_not_call_ai_safe_guidance():
+    llm = FakeLLM()
+    service = SmartIntakeService(llm=llm)
+    session = service.create_session()
+
+    response = await service.handle_message(session.session_id, "Toi dau nguc va kho tho.")
+
+    assert response.response_type == "emergency_handoff"
+    assert llm.prompts == []

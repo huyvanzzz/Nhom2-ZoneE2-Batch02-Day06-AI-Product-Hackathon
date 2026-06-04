@@ -108,4 +108,18 @@ with tab_flows:
 with tab_dashboard:
     if st.button("Refresh doctor cases"):
         st.session_state.doctor_cases = api_request("GET", backend_url, "/doctor/cases")
-    st.dataframe(st.session_state.get("doctor_cases", []), use_container_width=True)
+    doctor_cases = st.session_state.get("doctor_cases", [])
+    st.dataframe(doctor_cases, use_container_width=True)
+    selected_case = st.text_input(
+        "Case ID",
+        value=doctor_cases[0]["case_id"] if doctor_cases else "",
+    )
+    if st.button("Load case detail") and selected_case:
+        detail = api_request("GET", backend_url, f"/doctor/cases/{selected_case}")
+        logs = api_request("GET", backend_url, f"/debug/cases/{selected_case}/logs")
+        st.subheader("Case detail")
+        st.json(detail)
+        st.subheader("Evidence and sources")
+        st.json({"evidence_context": detail.get("evidence_context"), "sources": detail.get("sources")})
+        st.subheader("Audit logs")
+        st.json(logs)

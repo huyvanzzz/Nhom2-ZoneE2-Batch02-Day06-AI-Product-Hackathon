@@ -10,7 +10,7 @@ Trang thai tong quan: **backend MVP da chay duoc 4 flow bat buoc trong plan**.
 |---|---:|---|
 | Chat intake | Hoan thanh MVP | `POST /chat/session`, `POST /chat/message`, chat history |
 | Intake extractor | Hoan thanh MVP | Trich xuat relation, tuoi, trieu chung, thoi gian, muc do, booking intent |
-| Medical context search | Hoan thanh mot phan | Co `MedicalContextSearchTool` deterministic placeholder; chua goi Tavily/Firecrawl that trong intake flow |
+| Medical context search | Hoan thanh MVP | `MedicalContextSearchTool` goi Tavily/Firecrawl khi app runtime co env; fallback deterministic neu tool loi |
 | Triage so bo | Hoan thanh MVP | Priority low/medium/high dua tren severity/duration |
 | Hardcoded red flag override | Hoan thanh | Dau nguc, kho tho, sot 40, chay mau, dau bung du doi, non ra mau, phan den, ngat/lo mo/co giat, sung moi/mat/luoi |
 | Safe guidance | Hoan thanh MVP | Response `safe_guidance` cho ca khong nguy hiem |
@@ -23,6 +23,7 @@ Trang thai tong quan: **backend MVP da chay duoc 4 flow bat buoc trong plan**.
 | Doctor notes/status | Hoan thanh MVP | `POST /doctor/cases/{case_id}/notes`, `PATCH /doctor/cases/{case_id}/status` |
 | Audit log | Hoan thanh MVP | `GET /debug/cases/{case_id}/logs` |
 | Streamlit test UI | Hoan thanh trong dot nay | `codebase/backend/streamlit_app.py` |
+| Chat response bang AI | Hoan thanh MVP | `SmartIntakeService` dung OpenAI-compatible gateway trong safe-guidance branch; red flag khong goi AI |
 
 ## API hien co
 
@@ -52,7 +53,8 @@ Trang thai tong quan: **backend MVP da chay duoc 4 flow bat buoc trong plan**.
 ## Gioi han hien tai
 
 - Intake flow dang in-memory, restart server se mat case/session/booking.
-- Medical context trong `SmartIntakeService` dang la deterministic placeholder de demo on dinh; Tavily/Firecrawl adapters da co rieng nhung chua gan vao intake service.
+- Medical context trong `SmartIntakeService` da gan Tavily/Firecrawl qua `main.py`; neu external tool loi thi fallback deterministic de demo khong crash.
+- AI chat response da gan OpenAI-compatible gateway theo `ENVIRONMENT.md`; neu gateway loi thi fallback text deterministic.
 - Chua co database, auth, frontend production, booking that, payment, EMR sync, real-time doctor call.
 - Text response dang de ASCII de tranh loi encoding trong PowerShell/repo hien tai.
 
@@ -74,4 +76,4 @@ cd codebase/backend
 
 ## Ket luan
 
-Tinh den hien tai, backend da du de demo Day 6 theo `plan_day6.txt`: co chat intake, red flag safety, booking draft, dashboard va audit. Phan can lam tiep neu muon nang cap la gan Tavily/Firecrawl that vao `MedicalContextSearchTool`, them database, va lam UI production thay cho Streamlit test harness.
+Tinh den hien tai, backend da du de demo Day 6 theo `plan_day6.txt`: co chat intake, AI safe-guidance response, Tavily/Firecrawl search context, red flag safety, booking draft, dashboard va audit. Phan can lam tiep neu muon nang cap la them database, auth, va UI production thay cho Streamlit test harness.
