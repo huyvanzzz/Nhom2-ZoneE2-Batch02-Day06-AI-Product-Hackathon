@@ -1,12 +1,27 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from vinm_backend.intake import ChatMessageRequest, SmartIntakeService
 from vinm_backend.models import AssistRequest
 from vinm_backend.orchestrator import ResearchFlow
 
+DEMO_DOCTOR = {
+    "doctor_id": "dr_demo_001",
+    "name": "Bac si Demo Vinmec",
+    "code": "VINMEC-DR-01",
+    "department": "Noi Tieu hoa",
+}
+
 
 def create_app(flow: ResearchFlow, intake: SmartIntakeService | None = None) -> FastAPI:
     app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     intake_service = intake or SmartIntakeService()
 
     @app.get("/health")
@@ -57,6 +72,17 @@ def create_app(flow: ResearchFlow, intake: SmartIntakeService | None = None) -> 
     async def doctor_cases():
         return intake_service.list_doctor_cases()
 
+    @app.post("/doctor/login")
+    async def doctor_login(payload: dict):
+        supplied_code = str(payload.get("code", "")).strip()
+        if supplied_code != DEMO_DOCTOR["code"]:
+            return {"ok": False, "message": "Invalid doctor code"}
+        return {"ok": True, "doctor": DEMO_DOCTOR}
+
+    @app.get("/doctor/dashboard/stats")
+    async def doctor_dashboard_stats():
+        return intake_service.dashboard_stats()
+
     @app.get("/vinmec/facilities")
     async def vinmec_facilities():
         return intake_service.context_search.list_facility_options()
@@ -75,6 +101,10 @@ def create_app(flow: ResearchFlow, intake: SmartIntakeService | None = None) -> 
 
     @app.get("/debug/cases/{case_id}/logs")
     async def audit_logs(case_id: str):
+        return intake_service.list_audit_logs(case_id)
+
+    @app.get("/doctor/cases/{case_id}/logs")
+    async def doctor_case_logs(case_id: str):
         return intake_service.list_audit_logs(case_id)
 
     return app

@@ -24,3 +24,24 @@ async def test_health_and_assist_endpoint():
     assert health.json() == {"status": "ok"}
     assert assist.status_code == 200
     assert assist.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_frontend_cors_preflight_for_chat_endpoint():
+    app = create_app(flow=FakeFlow())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.options(
+            "/chat/message",
+            headers={
+                "Origin": "http://localhost:4173",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert "POST" in response.headers["access-control-allow-methods"]

@@ -6,6 +6,7 @@ from vinm_backend.app_factory import create_app
 from vinm_backend.intake import MedicalContextSearchTool, SmartIntakeService
 from vinm_backend.orchestrator import ResearchFlow
 from vinm_backend.settings import Settings
+from vinm_backend.storage import SqliteIntakeStore
 
 
 def build_flow(settings: Settings) -> ResearchFlow:
@@ -38,6 +39,7 @@ def build_intake(settings: Settings) -> SmartIntakeService:
     return SmartIntakeService(
         llm=llm,
         context_search=MedicalContextSearchTool(tavily=tavily, firecrawl=firecrawl),
+        store=SqliteIntakeStore(),
     )
 
 

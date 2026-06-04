@@ -1,4 +1,11 @@
 .DS_Store
 node_modules/
 .env
+.venv/
+venv/
+env/
+.pytest_cache/
+__pycache__/
+*.egg-info/
+var/
 *.log

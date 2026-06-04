@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import json
 from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlparse
@@ -52,6 +53,15 @@ def _normalize_text(value: str) -> str:
     return ascii_text.replace("đ", "d").replace("Đ", "d")
 
 
+def _contains_term(normalized: str, term: str) -> bool:
+    pattern = r"(?<!\w)" + re.escape(term).replace(r"\ ", r"\s+") + r"(?!\w)"
+    return re.search(pattern, normalized) is not None
+
+
+def _contains_any_term(normalized: str, terms: list[str]) -> bool:
+    return any(_contains_term(normalized, term) for term in terms)
+
+
 def _extract_time_label(normalized: str) -> str | None:
     if "sang mai" in normalized:
         return "Sáng mai"
@@ -61,6 +71,23 @@ def _extract_time_label(normalized: str) -> str | None:
         return "Tối nay"
     if "cuoi tuan" in normalized:
         return "Cuối tuần"
+
+    clock_match = re.search(r"\b(\d{1,2}):(\d{2})\s*(chieu|toi|sang|trua)?\b", normalized)
+    if clock_match:
+        hour = int(clock_match.group(1))
+        minute = int(clock_match.group(2))
+        suffix = clock_match.group(3) or ""
+        if suffix in {"chieu", "toi"} and hour < 12:
+            hour += 12
+        suffix_label = {
+            "chieu": "chiá»u",
+            "toi": "tá»‘i",
+            "sang": "sÃ¡ng",
+            "trua": "trÆ°a",
+        }.get(suffix, "")
+        if suffix_label:
+            return f"{hour:02d}:{minute:02d} {suffix_label}".strip()
+        return f"{hour:02d}:{minute:02d}"
 
     hour_match = re.search(r"\b(\d{1,2})\s*(gio|h)\b(?:\s*(chieu|toi|sang|trua))?", normalized)
     if not hour_match:
@@ -90,6 +117,8 @@ def _extract_hospital_label(normalized: str) -> str | None:
         return "Vinmec Central Park"
     if "da nang" in normalized:
         return "Vinmec Da Nang"
+    if "vinmec" in normalized:
+        return "Vinmec"
     return None
 
 
@@ -236,6 +265,8 @@ class DoctorCaseRow(BaseModel):
     patient: str
     age_or_birth_year: str
     main_symptom: str
+    duration: str = "unknown"
+    severity: str = "unknown"
     red_flag_status: str
     priority: str
     suggested_specialty: str
@@ -266,39 +297,68 @@ class IntakeResponse(BaseModel):
 
 
 class IntakeExtractorTool:
+    def _extract_phone(self, normalized: str) -> str | None:
+        phone_match = re.search(
+            r"(?:so dien thoai|sdt|dien thoai)\s*[:\-]?\s*([0-9][0-9\s\.-]{5,})",
+            normalized,
+        )
+        if not phone_match:
+            return None
+        digits = re.sub(r"\D", "", phone_match.group(1))
+        return digits if len(digits) >= 7 else None
+
+    def _extract_full_name(self, normalized: str) -> str | None:
+        patterns = [
+            r"(?:ten nguoi benh|ten benh nhan|ho ten|ten)\s+(.+?)(?=\s*(?:so dien thoai|sdt|dien thoai|co so|dia diem|ngay gio|luc|vao|tai)\b|$)",
+            r"(?:nguoi benh)\s+(.+?)(?=\s*(?:so dien thoai|sdt|dien thoai|co so|dia diem|ngay gio|luc|vao|tai)\b|$)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, normalized)
+            if match:
+                value = re.sub(r"\s+", " ", match.group(1)).strip(" ,.;:-")
+                value = re.sub(r"^(la|ten la)\s+", "", value).strip()
+                if value:
+                    return " ".join(part.capitalize() for part in value.split())
+        return None
+
     def extract(self, message: str) -> dict:
         normalized = _normalize_text(message)
         slots: dict[str, object] = {}
 
-        if "me toi" in normalized or "ma toi" in normalized:
+        if _contains_any_term(normalized, ["me toi", "ma toi"]):
             slots["patient_relation"] = "mother"
-        elif "bo toi" in normalized or "ba toi" in normalized:
+        elif _contains_any_term(normalized, ["bo toi", "ba toi"]):
             slots["patient_relation"] = "father"
-        elif "con toi" in normalized:
+        elif _contains_any_term(normalized, ["con toi", "be nha toi", "be cua toi", "be toi", "chau nha toi"]):
             slots["patient_relation"] = "child"
-        elif "toi" in normalized:
+        elif _contains_term(normalized, "toi"):
             slots["patient_relation"] = "self"
 
         age_match = re.search(r"\b(\d{1,3})\s*(tuoi|t)\b", normalized)
         if age_match:
             slots["age_or_birth_year"] = age_match.group(1)
 
-        if any(term in normalized for term in ["da day", "day hoi", "kho tieu", "dau bung"]):
+        if _contains_any_term(normalized, ["da day", "day hoi", "kho tieu", "dau bung"]):
             slots["main_symptom"] = "dau da day, day hoi, kho tieu"
             slots["suggested_specialty"] = "Noi Tieu hoa"
-        elif any(term in normalized for term in ["dau dau", "sot", "sot nong", "ho"]):
+        elif _contains_any_term(normalized, ["dau dau", "sot", "sot nong", "ho"]):
             symptoms = []
-            if "dau dau" in normalized:
+            if _contains_term(normalized, "dau dau"):
                 symptoms.append("dau dau")
-            if "sot" in normalized or "sot nong" in normalized:
+            if _contains_any_term(normalized, ["sot", "sot nong"]):
                 symptoms.append("sot")
-            if "ho" in normalized:
+            if _contains_term(normalized, "ho"):
                 symptoms.append("ho")
             slots["main_symptom"] = ", ".join(symptoms) or "trieu chung toan than"
             slots["suggested_specialty"] = "Noi Tong quat"
-        elif any(term in normalized for term in ["dau nguc", "kho tho"]):
+        elif _contains_any_term(normalized, ["dau nguc", "kho tho"]):
             slots["main_symptom"] = "dau nguc, kho tho"
             slots["suggested_specialty"] = "Cap cuu"
+
+        if full_name := self._extract_full_name(normalized):
+            slots["full_name"] = full_name
+        if phone := self._extract_phone(normalized):
+            slots["phone"] = phone
 
         if "2 tuan" in normalized or "hai tuan" in normalized:
             slots["duration"] = "2 tuan"
@@ -323,6 +383,54 @@ class IntakeExtractorTool:
             slots["preferred_time_detail"] = preferred_time
 
         return slots
+
+
+class PolicyGuardTool:
+    API_SECRET_TERMS = [
+        "api key",
+        "apikey",
+        "openai key",
+        "secret key",
+        "access token",
+        "bearer token",
+        "cho toi key",
+        "xin key",
+    ]
+    DISCRIMINATION_TERMS = [
+        "da den",
+        "nguoi da den",
+        "da trang",
+        "nguoi da trang",
+        "nguoi trang",
+        "nguoi chau phi",
+        "nguoi chau a",
+        "nguoi an do",
+        "nguoi trung quoc",
+        "nguoi nuoc ngoai",
+    ]
+    EXCLUSION_TERMS = [
+        "khong co",
+        "khong gap",
+        "khong muon gap",
+        "khong kham voi",
+        "tranh",
+        "loai",
+        "cam",
+        "chi gap",
+        "chi chon",
+        "chi muon",
+        "uu tien",
+    ]
+
+    def classify(self, message: str) -> str | None:
+        normalized = _normalize_text(message)
+        if any(term in normalized for term in self.API_SECRET_TERMS):
+            return "secret_request"
+        has_discrimination_term = any(term in normalized for term in self.DISCRIMINATION_TERMS)
+        has_exclusion_term = any(term in normalized for term in self.EXCLUSION_TERMS)
+        if has_discrimination_term and has_exclusion_term:
+            return "discriminatory_request"
+        return None
 
 
 class MedicalContextSearchTool:
@@ -509,19 +617,67 @@ class MedicalContextSearchTool:
 
 class TriageSafetyRuleTool:
     RED_FLAGS = {
+        # Hô hấp / tuần hoàn cấp
         "dau nguc": "dau nguc",
+        "tuc nguc": "tuc nguc",
+        "dau nguc lan tay": "dau nguc lan tay",
+        "dau nguc lan ham": "dau nguc lan ham",
+        "dau nguc lan lung": "dau nguc lan lung",
         "kho tho": "kho tho",
-        "sot 40": "sot 40 do",
-        "chay mau nhieu": "chay mau nhieu",
-        "dau bung du doi": "dau bung du doi",
-        "non ra mau": "non ra mau",
-        "phan den": "di ngoai phan den",
+        "kho tho tang dan": "kho tho tang dan",
+        "moi tim": "moi tim/tim tai",
         "ngat": "ngat",
-        "lo mo": "lo mo",
+        "choang vang": "choang vang",
+        # Sốt/nhiễm trùng nặng hoặc chảy máu nặng
+        "sot 40": "sot 40 do",
+        "sot cao khong ha": "sot cao khong ha",
+        "ret run": "ret run",
+        "chay mau nhieu": "chay mau nhieu",
+        "de bam tim": "de bam tim/chay mau bat thuong",
+        # Thần kinh cấp
+        "dau dau du doi": "dau dau du doi",
+        "dau dau dot ngot": "dau dau dot ngot",
+        "co gay": "co gay",
         "co giat": "co giat",
-        "sung moi": "sung moi/mat/luoi",
-        "sung mat": "sung moi/mat/luoi",
-        "sung luoi": "sung moi/mat/luoi",
+        "lo mo": "lo mo/roi loan y thuc",
+        "meo mieng": "meo mieng",
+        "noi kho": "noi kho",
+        "yeu nua nguoi": "yeu/liet nua nguoi",
+        "te nua nguoi": "te nua nguoi",
+        "mat thi luc dot ngot": "mat thi luc dot ngot",
+        # Tiêu hóa cấp / xuất huyết tiêu hóa
+        "dau bung du doi": "dau bung du doi",
+        "dau bung tang dan": "dau bung tang dan",
+        "bung cung": "bung cung",
+        "non lien tuc": "non lien tuc",
+        "non ra mau": "non ra mau",
+        "non mau ca phe": "non mau ca phe",
+        "phan den": "di ngoai phan den",
+        "di ngoai ra mau": "di ngoai ra mau",
+        "tieu chay ra mau": "tieu chay ra mau",
+        # Tiết niệu cấp
+        "khong tieu duoc": "khong tieu duoc/bi tieu",
+        # Dị ứng / phản vệ
+        "sung moi": "sung moi",
+        "sung mat": "sung mat",
+        "sung luoi": "sung luoi",
+        "sung hong": "sung hong",
+        "phat ban kem kho tho": "phat ban kem kho tho",
+        "noi me day toan than": "noi me day toan than",
+        "phat ban khong mat mau": "phat ban khong mat mau khi an",
+        # Đau lưng nguy cơ chèn ép thần kinh
+        "te vung yen ngua": "te vung yen ngua",
+        "mat kiem soat tieu tien": "mat kiem soat tieu tien",
+        "mat kiem soat dai tien": "mat kiem soat dai tien",
+        # Thai sản / trẻ em
+        "mang thai ra mau": "mang thai ra mau",
+        "mang thai dau bung": "mang thai dau bung",
+        "thai may yeu": "thai may yeu/it hon binh thuong",
+        "tre li bi": "tre li bi",
+        "tre kho danh thuc": "tre kho danh thuc",
+        "tre kho tho": "tre kho tho",
+        "tre co giat": "tre co giat",
+        "tre mat nuoc": "tre co dau hieu mat nuoc",
     }
 
     def classify(self, case: IntakeCase, message: str) -> IntakeCase:
@@ -553,6 +709,18 @@ class ChatResponseSummaryTool:
         if not self.facility_provider:
             return []
         return self.facility_provider.list_facility_options()[:limit]
+
+    def _booking_missing_fields(self, case: IntakeCase, patient: PatientInfo) -> list[str]:
+        missing = []
+        if patient.full_name == "unknown":
+            missing.append("tên người bệnh")
+        if patient.phone in {None, "", "unknown"}:
+            missing.append("số điện thoại")
+        if case.preferred_hospital in {"unknown", "Vinmec"}:
+            missing.append("cơ sở khám cụ thể")
+        if case.preferred_time_detail == "unknown" and case.preferred_time == "unknown":
+            missing.append("thời gian ngày giờ")
+        return missing
 
     async def build(self, case: IntakeCase, patient: PatientInfo, booking: BookingDraft | None) -> IntakeResponse:
         if case.red_flag_status == "confirmed":
@@ -599,7 +767,9 @@ class ChatResponseSummaryTool:
                 sources=case.sources,
             )
 
-        if case.booking_intent and case.preferred_hospital == "unknown":
+        booking_missing = self._booking_missing_fields(case, patient)
+
+        if case.booking_intent and booking_missing:
             facility_candidates = self._facility_candidates()
             quick_replies = [candidate["short_name"] for candidate in facility_candidates[:4]]
             if not quick_replies:
@@ -613,7 +783,10 @@ class ChatResponseSummaryTool:
                 response_type="ask_booking_details",
                 assistant_text=(
                     "Mình đã ghi nhận nhu cầu đặt lịch. "
-                    "Đây là một số cơ sở Vinmec để bạn chọn; sau đó cho mình biết khung giờ mong muốn nhé."
+                    "Để tạo lịch nháp, mình cần: "
+                    + ", ".join(booking_missing)
+                    + ". "
+                    "Bạn gửi theo mẫu: tên..., số điện thoại..., cơ sở khám..., ngày giờ...."
                 ),
                 quick_replies=quick_replies,
                 case=case,
@@ -727,6 +900,8 @@ class ChatResponseSummaryTool:
             f"Current symptom: {case.main_symptom}\n"
             f"Current duration: {case.duration}\n"
             f"Current severity: {case.severity}\n"
+            f"Patient relation: {patient.relationship_to_customer}\n"
+            "Khong hoi lai quan he nguoi benh neu Patient relation khac unknown va khong nam trong Missing fields.\n"
             "Ask one follow-up question for a Vinmec intake chat in Vietnamese.\n"
             f"Patient age: {patient.age_or_birth_year}\n"
         )
@@ -789,9 +964,11 @@ class ChatResponseSummaryTool:
 
 
 class SmartIntakeService:
-    def __init__(self, llm=None, context_search: MedicalContextSearchTool | None = None):
+    def __init__(self, llm=None, context_search: MedicalContextSearchTool | None = None, store=None):
         self.llm = llm
+        self.store = store
         self.extractor = IntakeExtractorTool()
+        self.policy_guard = PolicyGuardTool()
         self.context_search = context_search or MedicalContextSearchTool()
         self.triage = TriageSafetyRuleTool()
         self.response_builder = ChatResponseSummaryTool(llm=llm, facility_provider=self.context_search)
@@ -825,6 +1002,7 @@ class SmartIntakeService:
         self.messages[session_id] = []
         self.audit_logs[case_id] = []
         self._log(case_id, "session_created", session_id)
+        self._save_case_snapshot(case_id)
         return session
 
     async def handle_message(self, session_id: str, content: str) -> IntakeResponse:
@@ -835,16 +1013,56 @@ class SmartIntakeService:
             self._log(case.case_id, "blocked_user_message", content)
             response = await self.response_builder.build(case, patient, None)
             self._log(case.case_id, "assistant_response", response.response_type)
+            self._save_case_snapshot(case.case_id)
             return response
 
         self.messages[session_id].append(ChatMessage(role="user", content=content))
         self._log(case.case_id, "user_message", content)
 
+        policy_violation = self.policy_guard.classify(content)
+        if policy_violation:
+            response = self._build_policy_refusal_response(case, patient, policy_violation)
+            self.messages[session_id].append(ChatMessage(role="assistant", content=response.assistant_text))
+            self._log(case.case_id, "policy_refusal", policy_violation)
+            self._log(case.case_id, "assistant_response", response.response_type)
+            self._save_case_snapshot(case.case_id)
+            return response
+
+        if not self._is_in_scope_message(content):
+            response = self._build_out_of_scope_response(case, patient)
+            self.messages[session_id].append(ChatMessage(role="assistant", content=response.assistant_text))
+            self._log(case.case_id, "out_of_scope_message", content)
+            self._log(case.case_id, "assistant_response", response.response_type)
+            self._save_case_snapshot(case.case_id)
+            return response
+
         slots = self.extractor.extract(content)
+        self._log(case.case_id, "intake_slots_extracted", json.dumps(slots, ensure_ascii=False))
         self._apply_slots(case, patient, slots)
+        if case.booking_intent:
+            booking_slots = await self._extract_booking_slots(case, patient, content)
+            self._log(case.case_id, "booking_slots_extracted", json.dumps(booking_slots, ensure_ascii=False))
+            self._apply_slots(case, patient, booking_slots)
         case = self.triage.classify(case, content)
+        self._log(
+            case.case_id,
+            "triage_rule_applied",
+            f"priority={case.priority}; red_flag_status={case.red_flag_status}; red_flags={case.red_flags}",
+        )
         if self._has_minimum_intake(case, patient) and case.red_flag_status != "confirmed":
             case.evidence_context, case.sources = await self.context_search.search(case)
+            self._log(
+                case.case_id,
+                "medical_context_search",
+                json.dumps(
+                    {
+                        "search_query": case.evidence_context.get("search_query", "fallback"),
+                        "source_count": len(case.sources),
+                        "sources": [source.title for source in case.sources[:3]],
+                    },
+                    ensure_ascii=False,
+                ),
+            )
             case = await self._classify_with_ai(case, patient)
             case = await self._choose_specialty_with_ai(case, patient)
         case.doctor_summary = await self._build_doctor_summary(
@@ -854,16 +1072,20 @@ class SmartIntakeService:
         )
         self.cases[case.case_id] = case
 
-        booking = None
-        if case.booking_intent and "xac nhan" in _normalize_text(content):
-            booking = self._create_booking(case, patient)
-            case.booking_id = booking.booking_id
-            case.case_status = "booking_requested"
-            self.cases[case.case_id] = case
+        booking = self.bookings.get(case.booking_id) if case.booking_id else None
+        if case.booking_intent:
+            booking_missing = self._booking_missing_fields(case, patient)
+            self._log(case.case_id, "booking_missing_fields", json.dumps(booking_missing, ensure_ascii=False))
+            if booking is None and not booking_missing:
+                booking = self._create_booking(case, patient)
+                case.booking_id = booking.booking_id
+                case.case_status = "booking_requested"
+                self.cases[case.case_id] = case
 
         response = await self.response_builder.build(case, patient, booking)
         self.messages[session_id].append(ChatMessage(role="assistant", content=response.assistant_text))
         self._log(case.case_id, "assistant_response", response.response_type)
+        self._save_case_snapshot(case.case_id)
         return response
 
     def list_messages(self, session_id: str) -> list[ChatMessage]:
@@ -876,6 +1098,7 @@ class SmartIntakeService:
         case = self.cases[case_id].model_copy(update=patch | {"updated_at": _now_iso()})
         self.cases[case_id] = case
         self._log(case_id, "case_patched", str(sorted(patch.keys())))
+        self._save_case_snapshot(case_id)
         return case
 
     def create_booking_draft(self, case_id: str, hospital: str, preferred_time: str) -> BookingDraft:
@@ -888,6 +1111,7 @@ class SmartIntakeService:
         case.booking_id = booking.booking_id
         case.case_status = "booking_requested"
         self.cases[case_id] = case
+        self._save_case_snapshot(case_id)
         return booking
 
     def get_booking(self, booking_id: str) -> BookingDraft:
@@ -897,9 +1121,14 @@ class SmartIntakeService:
         booking = self.bookings[booking_id].model_copy(update=patch)
         self.bookings[booking_id] = booking
         self._log(booking.case_id, "booking_patched", str(sorted(patch.keys())))
+        self._save_case_snapshot(booking.case_id)
         return booking
 
     def list_doctor_cases(self) -> list[DoctorCaseRow]:
+        stored_rows = self.store.list_doctor_case_rows() if self.store else []
+        if stored_rows:
+            return [DoctorCaseRow(**row) for row in stored_rows]
+
         rows = []
         for case in self.cases.values():
             patient = self.patients[case.patient_id]
@@ -919,6 +1148,8 @@ class SmartIntakeService:
                     patient=patient.relationship_to_customer,
                     age_or_birth_year=patient.age_or_birth_year,
                     main_symptom=case.main_symptom,
+                    duration=case.duration,
+                    severity=case.severity,
                     red_flag_status=case.red_flag_status,
                     priority=case.priority,
                     suggested_specialty=case.suggested_specialty,
@@ -936,6 +1167,7 @@ class SmartIntakeService:
         case.doctor_notes.append(note)
         case.updated_at = _now_iso()
         self._log(case_id, "doctor_note_added", note)
+        self._save_case_snapshot(case_id)
         return case
 
     def patch_case_status(self, case_id: str, status: str) -> IntakeCase:
@@ -943,12 +1175,159 @@ class SmartIntakeService:
         case.case_status = status
         case.updated_at = _now_iso()
         self._log(case_id, "case_status_updated", status)
+        self._save_case_snapshot(case_id)
         return case
 
     def list_audit_logs(self, case_id: str) -> list[AuditLog]:
+        stored_logs = self.store.list_logs(case_id) if self.store else []
+        if stored_logs:
+            return [AuditLog(**log) for log in stored_logs]
         return self.audit_logs[case_id]
 
+    def dashboard_stats(self) -> dict:
+        if self.store:
+            return self.store.dashboard_stats()
+        rows = self.list_doctor_cases()
+        return {
+            "date": datetime.now(timezone.utc).date().isoformat(),
+            "total_conversations": len(rows),
+            "red_flag_cases": sum(1 for row in rows if row.red_flag_status == "confirmed"),
+            "booking_drafts": sum(1 for row in rows if row.booking_status == "draft"),
+            "priority_counts": {},
+            "specialty_counts": {},
+        }
+
+    def _build_policy_refusal_response(
+        self,
+        case: IntakeCase,
+        patient: PatientInfo,
+        policy_violation: str,
+    ) -> IntakeResponse:
+        if policy_violation == "secret_request":
+            assistant_text = (
+                "Mình không thể cung cấp API key, token, mật khẩu hoặc thông tin bí mật hệ thống. "
+                "Mình vẫn có thể hỗ trợ tiếp nhận triệu chứng, gợi ý chuyên khoa phù hợp hoặc tạo lịch khám nháp."
+            )
+            quick_replies = ["Mô tả triệu chứng", "Đặt lịch khám nháp", "Xem handoff cho bác sĩ"]
+        elif policy_violation == "discriminatory_request":
+            assistant_text = (
+                "Mình không thể hỗ trợ chọn hoặc loại trừ nhân sự, bác sĩ hay địa điểm dựa trên chủng tộc, màu da hoặc đặc điểm được bảo vệ. "
+                "Nếu bạn muốn đặt lịch, mình có thể hỗ trợ theo nhu cầu y tế, chuyên khoa, cơ sở Vinmec và khung giờ phù hợp."
+            )
+            quick_replies = ["Chọn cơ sở Vinmec", "Nhập thời gian khám", "Mô tả triệu chứng"]
+        else:
+            assistant_text = (
+                "Mình không thể hỗ trợ yêu cầu đó. "
+                "Mình có thể tiếp tục hỗ trợ tiếp nhận triệu chứng, gợi ý chuyên khoa hoặc tạo lịch khám nháp."
+            )
+            quick_replies = ["Mô tả triệu chứng", "Đặt lịch khám nháp"]
+        return IntakeResponse(
+            response_type="policy_refusal",
+            assistant_text=assistant_text,
+            quick_replies=quick_replies,
+            case=case,
+            patient=patient,
+            booking=None,
+            doctor_summary=case.doctor_summary,
+            sources=case.sources,
+            facility_candidates=self.response_builder._facility_candidates(),
+        )
+
+    def _is_in_scope_message(self, content: str) -> bool:
+        normalized = _normalize_text(content)
+        if not normalized.strip():
+            return False
+        scope_terms = [
+            "vinmec",
+            "kham",
+            "dat lich",
+            "lich kham",
+            "booking",
+            "bac si",
+            "chuyen khoa",
+            "co so",
+            "benh vien",
+            "trieu chung",
+            "benh",
+            "dau",
+            "sot",
+            "ho",
+            "kho tho",
+            "dau nguc",
+            "da day",
+            "day hoi",
+            "kho tieu",
+            "dau bung",
+            "non",
+            "tieu chay",
+            "chong mat",
+            "met",
+            "ngua",
+            "phat ban",
+            "mang thai",
+            "co bau",
+            "me toi",
+            "bo toi",
+            "con toi",
+            "be nha toi",
+            "be cua toi",
+            "chau nha toi",
+            "tuoi",
+            "nam sinh",
+            "nhe",
+            "vua",
+            "nang",
+            "rat nang",
+            "khong chiu duoc",
+            "times city",
+            "smart city",
+            "central park",
+            "da nang",
+            "sang mai",
+            "chieu mai",
+            "toi nay",
+            "cuoi tuan",
+            "xac nhan",
+            "sua thong tin",
+            "huy",
+            "ten nguoi benh",
+            "ten benh nhan",
+            "ho ten",
+            "so dien thoai",
+            "sdt",
+            "dien thoai",
+        ]
+        if _contains_any_term(normalized, scope_terms):
+            return True
+        if re.search(r"\b\d{1,3}\s*(tuoi|t)\b", normalized):
+            return True
+        if re.search(r"\b\d{1,2}(:\d{2})?\s*(gio|h|chieu|sang|toi|trua)\b", normalized):
+            return True
+        if re.search(r"(?:so dien thoai|sdt|dien thoai)\s*[:\-]?\s*[0-9][0-9\s\.-]{5,}", normalized):
+            return True
+        return False
+
+    def _build_out_of_scope_response(self, case: IntakeCase, patient: PatientInfo) -> IntakeResponse:
+        return IntakeResponse(
+            response_type="out_of_scope",
+            assistant_text=(
+                "Câu hỏi này không phù hợp với phạm vi hỗ trợ của Vinmec AI Intake demo. "
+                "Mình chỉ hỗ trợ tiếp nhận triệu chứng, phát hiện dấu hiệu nguy hiểm, gợi ý chuyên khoa và tạo lịch khám nháp."
+            ),
+            quick_replies=["Mô tả triệu chứng", "Đặt lịch khám nháp", "Chọn cơ sở Vinmec"],
+            case=case,
+            patient=patient,
+            booking=None,
+            doctor_summary=case.doctor_summary,
+            sources=case.sources,
+            facility_candidates=self.response_builder._facility_candidates(),
+        )
+
     def _apply_slots(self, case: IntakeCase, patient: PatientInfo, slots: dict) -> None:
+        if full_name := slots.get("full_name"):
+            patient.full_name = str(full_name)
+        if phone := slots.get("phone"):
+            patient.phone = str(phone)
         if relation := slots.get("patient_relation"):
             patient.relationship_to_customer = str(relation)
         if age := slots.get("age_or_birth_year"):
@@ -974,6 +1353,18 @@ class SmartIntakeService:
             and patient.age_or_birth_year != "unknown"
         )
 
+    def _booking_missing_fields(self, case: IntakeCase, patient: PatientInfo) -> list[str]:
+        missing = []
+        if patient.full_name == "unknown":
+            missing.append("tên người bệnh")
+        if patient.phone in {None, "", "unknown"}:
+            missing.append("số điện thoại")
+        if case.preferred_hospital in {"unknown", "Vinmec"}:
+            missing.append("cơ sở khám cụ thể")
+        if case.preferred_time_detail == "unknown" and case.preferred_time == "unknown":
+            missing.append("thời gian ngày giờ")
+        return missing
+
     def _create_booking(self, case: IntakeCase, patient: PatientInfo) -> BookingDraft:
         self._booking_counter += 1
         booking = BookingDraft(
@@ -988,6 +1379,37 @@ class SmartIntakeService:
         self.bookings[booking.booking_id] = booking
         self._log(case.case_id, "booking_draft_created", booking.booking_id)
         return booking
+
+    async def _extract_booking_slots(self, case: IntakeCase, patient: PatientInfo, message: str) -> dict:
+        deterministic_slots = self.extractor.extract(message)
+        if not self.llm:
+            return deterministic_slots
+
+        prompt = (
+            "Pha: booking_extraction.\n"
+            "Trích xuất các trường đặt lịch từ tin nhắn gần nhất của người dùng.\n"
+            "Chỉ trả về JSON hợp lệ, không giải thích, không markdown.\n"
+            "Các khóa cho phép: full_name, phone, preferred_hospital, preferred_time, preferred_time_detail, booking_intent.\n"
+            "Nếu không chắc, dùng giá trị \"unknown\".\n"
+            "Nếu người dùng chỉ nói \"Vinmec\" mà chưa nêu cơ sở cụ thể, preferred_hospital vẫn để \"Vinmec\".\n"
+            f"Patient hiện tại: {patient.model_dump()}\n"
+            f"Case hiện tại: {case.model_dump()}\n"
+            f"Tin nhắn: {message}\n"
+        )
+        try:
+            raw = await self.llm.complete(prompt)
+            parsed = json.loads(raw)
+        except Exception:
+            return deterministic_slots
+
+        slots = dict(deterministic_slots)
+        for key in ["full_name", "phone", "preferred_hospital", "preferred_time", "preferred_time_detail"]:
+            value = parsed.get(key)
+            if isinstance(value, str) and value and value != "unknown":
+                slots[key] = value
+        if parsed.get("booking_intent") is True:
+            slots["booking_intent"] = True
+        return slots
 
     async def _build_doctor_summary(
         self,
@@ -1005,6 +1427,7 @@ class SmartIntakeService:
             f"Nguồn tham khảo: {self.response_builder._format_sources(case.sources)}"
         )
         if not self.llm or not use_ai:
+            self._log(case.case_id, "doctor_summary_fallback", "llm_disabled_or_red_flag")
             return fallback.replace("Noi Tong quat", "Nội tổng quát").replace("Noi Tieu hoa", "Nội tiêu hoá").replace("Cap cuu", "Cấp cứu")
         prompt = (
             "Pha: doctor_summary.\n"
@@ -1018,8 +1441,10 @@ class SmartIntakeService:
         )
         try:
             summary = await self.llm.complete(prompt)
+            self._log(case.case_id, "doctor_summary_ai", "phase=doctor_summary; status=ok")
             return summary.replace("Noi Tong quat", "Nội tổng quát").replace("Noi Tieu hoa", "Nội tiêu hoá").replace("Cap cuu", "Cấp cứu")
         except Exception:
+            self._log(case.case_id, "doctor_summary_fallback", "phase=doctor_summary; status=llm_error")
             return fallback.replace("Noi Tong quat", "Nội tổng quát").replace("Noi Tieu hoa", "Nội tiêu hoá").replace("Cap cuu", "Cấp cứu")
 
     async def _classify_with_ai(self, case: IntakeCase, patient: PatientInfo) -> IntakeCase:
@@ -1029,6 +1454,7 @@ class SmartIntakeService:
             f"{fallback_level}: phân loại sơ bộ dựa trên thời gian, mức độ và dấu hiệu nguy hiểm đã kiểm tra."
         )
         if not self.llm:
+            self._log(case.case_id, "ai_triage_fallback", case.ai_triage_reason)
             return case
         prompt = (
             "Pha: triage_classification.\n"
@@ -1043,6 +1469,7 @@ class SmartIntakeService:
         try:
             result = await self.llm.complete(prompt)
         except Exception:
+            self._log(case.case_id, "ai_triage_fallback", "phase=triage_classification; status=llm_error")
             return case
         normalized = _normalize_text(result)
         if normalized.startswith("high"):
@@ -1054,10 +1481,12 @@ class SmartIntakeService:
         case.ai_triage_reason = result
         if case.ai_triage_level == "high":
             case.priority = "high"
+        self._log(case.case_id, "ai_triage_result", case.ai_triage_reason)
         return case
 
     async def _choose_specialty_with_ai(self, case: IntakeCase, patient: PatientInfo) -> IntakeCase:
         if not self.llm:
+            self._log(case.case_id, "specialty_selection_fallback", case.suggested_specialty)
             return case
 
         allowed_candidates = _specialty_candidates_from_case(case)
@@ -1077,18 +1506,35 @@ Sources: {self.response_builder._format_sources(case.sources)}
         try:
             result = await self.llm.complete(prompt)
         except Exception:
+            self._log(case.case_id, "specialty_selection_fallback", "phase=specialty_selection; status=llm_error")
             return case
 
         suggested = _normalize_specialty_code(result or "")
         if suggested and suggested in allowed_candidates:
             case.suggested_specialty = suggested
+            self._log(case.case_id, "specialty_selection_result", result)
             return case
         if case.suggested_specialty not in allowed_candidates and "Noi Tong quat" in allowed_candidates:
             case.suggested_specialty = "Noi Tong quat"
+        self._log(case.case_id, "specialty_selection_result", result or case.suggested_specialty)
         return case
 
     def _log(self, case_id: str, event: str, detail: str) -> None:
         normalized = re.sub(r"\s+", " ", detail).strip()
         if len(normalized) > 120:
             normalized = normalized[:117] + "..."
-        self.audit_logs.setdefault(case_id, []).append(AuditLog(case_id=case_id, event=event, detail=normalized))
+        log = AuditLog(case_id=case_id, event=event, detail=normalized)
+        self.audit_logs.setdefault(case_id, []).append(log)
+        if self.store:
+            self.store.append_log(case_id, event, normalized, log.created_at)
+
+    def _booking_status_for_case(self, case: IntakeCase) -> str:
+        booking = self.bookings.get(case.booking_id) if case.booking_id else None
+        return booking.booking_status if booking else "none"
+
+    def _save_case_snapshot(self, case_id: str) -> None:
+        if not self.store or case_id not in self.cases:
+            return
+        case = self.cases[case_id]
+        patient = self.patients[case.patient_id]
+        self.store.save_case_snapshot(case, patient, self._booking_status_for_case(case))
