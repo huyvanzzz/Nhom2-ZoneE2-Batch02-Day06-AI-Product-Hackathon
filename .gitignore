@@ -9,3 +9,6 @@ __pycache__/
 *.egg-info/
 var/
 *.log
+*.egg-info/
+codebase/backend/var/
+codebase/var/
