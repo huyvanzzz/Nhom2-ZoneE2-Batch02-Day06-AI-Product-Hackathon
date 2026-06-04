@@ -4,6 +4,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,17 @@ EMERGENCY_CONTACTS = [
         "phone": "028 3622 1166",
         "address": "720A Điện Biên Phủ, TP. Hồ Chí Minh",
     },
+]
+
+TRUSTED_MEDICAL_DOMAINS = [
+    "vinmec.com",
+    "mayoclinic.org",
+    "nhs.uk",
+    "medlineplus.gov",
+    "cdc.gov",
+    "who.int",
+    "clevelandclinic.org",
+    "healthdirect.gov.au",
 ]
 
 
@@ -79,6 +91,28 @@ def _extract_hospital_label(normalized: str) -> str | None:
     if "da nang" in normalized:
         return "Vinmec Da Nang"
     return None
+
+
+def _domain_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    return parsed.netloc.lower().removeprefix("www.")
+
+
+def _is_trusted_domain(url: str, domains: list[str]) -> bool:
+    domain = _domain_from_url(url)
+    return any(domain == allowed or domain.endswith(f".{allowed}") for allowed in domains)
+
+
+def _case_search_phrase(case: "IntakeCase") -> str:
+    if case.suggested_specialty == "Noi Tieu hoa":
+        return "dau da day day hoi kho tieu"
+    if case.suggested_specialty == "Cap cuu":
+        return "dau nguc kho tho cap cuu"
+    if case.suggested_specialty == "Noi Tong quat":
+        return "dau dau sot ho"
+    if case.main_symptom != "unknown":
+        return case.main_symptom
+    return case.suggested_specialty
 
 
 class IntakeSession(BaseModel):
@@ -300,27 +334,83 @@ class MedicalContextSearchTool:
         if not self.tavily:
             return fallback_context, fallback_sources
 
-        query = (
-            f"{case.main_symptom} {case.duration} warning signs when to seek care "
-            "Vinmec NHS Mayo Clinic MedlinePlus"
-        )
+        search_plan = self._build_search_plan(case)
+        collected_sources: list[SourceRef] = []
+        scraped_points: list[str] = []
         try:
-            sources = await self.tavily.search(query)
-            scraped_points = []
-            if self.firecrawl:
-                for source in sources[:2]:
+            chosen_query = search_plan[0]["query"]
+            for plan in search_plan:
+                sources = await self.tavily.search(
+                    plan["query"],
+                    include_domains=plan["include_domains"],
+                    exclude_domains=plan.get("exclude_domains"),
+                    search_depth="advanced",
+                    max_results=5,
+                    include_raw_content="markdown",
+                    topic="general",
+                )
+                filtered_sources = [
+                    source for source in sources if _is_trusted_domain(source.url, plan["include_domains"])
+                ]
+                if filtered_sources:
+                    collected_sources = self._merge_sources(collected_sources, filtered_sources)
+                    chosen_query = plan["query"]
+                    break
+                if not collected_sources:
+                    collected_sources = self._merge_sources(collected_sources, sources)
+
+            if self.firecrawl and collected_sources:
+                for source in collected_sources[:2]:
                     try:
                         scraped_points.append(await self.firecrawl.scrape(source.url))
                     except Exception:
                         continue
             context = {
                 **fallback_context,
-                "search_query": query,
+                "search_query": chosen_query,
+                "search_plan": search_plan,
                 "scraped_context": scraped_points[:2],
             }
-            return context, sources[:5] or fallback_sources
+            return context, collected_sources[:5] or fallback_sources
         except Exception:
             return fallback_context, fallback_sources
+
+    def _build_search_plan(self, case: IntakeCase) -> list[dict]:
+        symptom_phrase = _case_search_phrase(case)
+        primary_query = f"site:vinmec.com {symptom_phrase} khi nao can kham"
+        secondary_query = f"{symptom_phrase} warning signs when to seek care"
+        return [
+            {
+                "label": "vinmec_first",
+                "query": primary_query,
+                "include_domains": ["vinmec.com"],
+                "exclude_domains": ["youtube.com", "m.youtube.com", "facebook.com", "tiktok.com"],
+            },
+            {
+                "label": "trusted_fallback",
+                "query": secondary_query,
+                "include_domains": [
+                    "vinmec.com",
+                    "mayoclinic.org",
+                    "nhs.uk",
+                    "medlineplus.gov",
+                    "cdc.gov",
+                    "who.int",
+                    "clevelandclinic.org",
+                    "healthdirect.gov.au",
+                ],
+                "exclude_domains": ["youtube.com", "m.youtube.com", "facebook.com", "tiktok.com"],
+            },
+        ]
+
+    def _merge_sources(self, existing: list[SourceRef], new_sources: list[SourceRef]) -> list[SourceRef]:
+        seen = {source.url for source in existing}
+        merged = list(existing)
+        for source in new_sources:
+            if source.url not in seen:
+                merged.append(source)
+                seen.add(source.url)
+        return merged
 
 
 class TriageSafetyRuleTool:
@@ -477,10 +567,10 @@ class ChatResponseSummaryTool:
     async def _safe_guidance_text(self, case: IntakeCase, patient: PatientInfo) -> str:
         source_text = self._format_sources(case.sources)
         fallback = (
-            "Mình đã kiểm tra ngữ cảnh y tế liên quan và hiện chưa thấy dấu hiệu khẩn cấp rõ ràng từ thông tin bạn cung cấp. "
-            "Đây là nhận định sơ bộ, không phải chẩn đoán y khoa. "
+            f"Dựa trên thông tin bạn vừa chia sẻ, mình tạm xếp ca này ở mức ưu tiên {case.priority}. "
+            "Đây là nhận định sơ bộ để định hướng, không phải chẩn đoán y khoa. "
             f"Dựa trên triệu chứng hiện tại và nguồn tham khảo đã kiểm tra{source_text}, "
-            f"bạn nên ưu tiên khám {case.suggested_specialty} tại Vinmec sớm hơn nếu triệu chứng kéo dài, lặp lại hoặc tăng mức độ. "
+            f"mình khuyên bạn ưu tiên khám {case.suggested_specialty} tại Vinmec sớm hơn nếu triệu chứng kéo dài, lặp lại hoặc nặng lên. "
             "Nếu có sốt cao, khó thở, đau ngực, nôn ra máu, đi ngoài phân đen hoặc lơ mơ, hãy đi cấp cứu ngay. "
             "Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat."
         )
@@ -490,13 +580,14 @@ class ChatResponseSummaryTool:
         prompt = (
             "Pha: safe_guidance.\n"
             "Vai trò: trợ lý tiếp nhận Vinmec, không chẩn đoán bệnh, không kê thuốc, không bỏ qua hardcoded red flags.\n"
-            "Mục tiêu: phản hồi dài hơn 4-6 câu bằng tiếng Việt, dựa trên nguồn đã tìm kiếm để giải thích ngắn gọn vì sao nên ưu tiên khám sớm hay có thể theo dõi tại nhà.\n"
+            "Giọng văn: thân thiện, tự nhiên, y khoa nhưng không khô cứng; tránh các cụm kiểu 'mình đã kiểm tra ngữ cảnh y tế liên quan'.\n"
+            "Mục tiêu: trả lời 4-6 câu bằng tiếng Việt, giống một điều phối viên y tế đang hướng dẫn người bệnh.\n"
             "Bắt buộc gồm 4 phần:\n"
-            "1) Tóm tắt tình trạng hiện tại của người bệnh.\n"
-            "2) Nêu nhận định sơ bộ về mức độ ưu tiên khám.\n"
-            "3) Dựa trên evidence_context và sources để gợi ý chuyên khoa hoặc cơ sở Vinmec phù hợp.\n"
-            "4) Hỏi người dùng có muốn tạo lịch khám nháp trong chat không.\n"
-            "Nếu nguồn chưa đủ thì nói rõ là đang dùng ngữ cảnh tham khảo và chỉ đề xuất an toàn.\n"
+            "1) Mở đầu ngắn gọn bằng sự đồng cảm hoặc xác nhận điều người bệnh vừa chia sẻ.\n"
+            "2) Nêu nhận định sơ bộ về mức độ ưu tiên khám bằng ngôn ngữ dễ hiểu.\n"
+            "3) Nếu có sources, chỉ nhắc 1-2 nguồn đáng tin và giải thích ngắn vì sao chúng liên quan; không liệt kê dồn dập nhiều nguồn.\n"
+            "4) Kết bằng câu hỏi mềm: 'Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat.'\n"
+            "Nếu nguồn chưa đủ thì nói rõ là chỉ đang dựa trên thông tin hiện có và vẫn ưu tiên an toàn.\n"
             f"Patient relation: {patient.relationship_to_customer}\n"
             f"Age or birth year: {patient.age_or_birth_year}\n"
             f"Main symptom: {case.main_symptom}\n"
@@ -506,11 +597,11 @@ class ChatResponseSummaryTool:
             f"Priority: {case.priority}\n"
             f"Evidence context: {case.evidence_context}\n"
             f"Sources: {self._format_sources(case.sources)}\n"
-            "Return a short Vietnamese chat reply with safe initial guidance, specialty suggestion, and a question asking whether the user wants a virtual booking.\n"
+            "Return a warm Vietnamese chat reply with safe initial guidance, specialty suggestion, and a booking question.\n"
         )
         try:
             assistant_text = await self.llm.complete(prompt)
-            return self._enrich_safe_guidance_text(assistant_text, case)
+            return self._polish_safe_guidance_text(self._enrich_safe_guidance_text(assistant_text, case))
         except Exception:
             return fallback
 
@@ -577,6 +668,16 @@ class ChatResponseSummaryTool:
             "Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat và lưu đầy đủ hồ sơ, giờ khám chi tiết, tóm tắt ca bệnh cùng nguồn tham khảo.",
         ]
         return assistant_text.rstrip() + "\n\n" + " ".join(tail)
+
+    def _polish_safe_guidance_text(self, assistant_text: str) -> str:
+        replacements = {
+            "Mình đã kiểm tra ngữ cảnh y tế liên quan": "Dựa trên thông tin bạn vừa chia sẻ",
+            "hiện chưa thấy dấu hiệu khẩn cấp rõ ràng": "mình chưa thấy dấu hiệu khẩn cấp rõ ràng",
+        }
+        polished = assistant_text
+        for source_text, target_text in replacements.items():
+            polished = polished.replace(source_text, target_text)
+        return polished
 
 
 class SmartIntakeService:

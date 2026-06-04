@@ -12,6 +12,9 @@ async def test_tavily_search_returns_normalized_sources():
     async def handler(request):
         payload = json.loads(request.content.decode())
         assert payload["query"] == "rustic bakery"
+        assert payload["search_depth"] == "advanced"
+        assert payload["max_results"] == 5
+        assert payload["include_raw_content"] == "markdown"
         return Response(
             200,
             json={
@@ -29,6 +32,24 @@ async def test_tavily_search_returns_normalized_sources():
     results = await client.search("rustic bakery")
 
     assert results[0].url == "https://example.com/a"
+
+
+@pytest.mark.asyncio
+async def test_tavily_search_accepts_domain_filters():
+    async def handler(request):
+        payload = json.loads(request.content.decode())
+        assert payload["include_domains"] == ["vinmec.com"]
+        assert payload["exclude_domains"] == ["youtube.com"]
+        return Response(200, json={"results": []})
+
+    client = TavilyClient(api_key="tv-key", transport=MockTransport(handler))
+    results = await client.search(
+        "warning signs",
+        include_domains=["vinmec.com"],
+        exclude_domains=["youtube.com"],
+    )
+
+    assert results == []
 
 
 @pytest.mark.asyncio
