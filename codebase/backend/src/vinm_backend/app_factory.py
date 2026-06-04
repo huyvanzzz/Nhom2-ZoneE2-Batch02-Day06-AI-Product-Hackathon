@@ -57,6 +57,10 @@ def create_app(flow: ResearchFlow, intake: SmartIntakeService | None = None) -> 
     async def doctor_cases():
         return intake_service.list_doctor_cases()
 
+    @app.get("/vinmec/facilities")
+    async def vinmec_facilities():
+        return intake_service.context_search.list_facility_options()
+
     @app.get("/doctor/cases/{case_id}")
     async def doctor_case_detail(case_id: str):
         return intake_service.get_case(case_id)

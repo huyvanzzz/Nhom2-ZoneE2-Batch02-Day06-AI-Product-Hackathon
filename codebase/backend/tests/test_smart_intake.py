@@ -205,6 +205,18 @@ async def test_booking_details_are_extracted_and_confirmed_without_reasking():
 
 
 @pytest.mark.asyncio
+async def test_booking_prompt_includes_vinmec_facility_candidates():
+    service = SmartIntakeService()
+    session = service.create_session()
+
+    response = await service.handle_message(session.session_id, "Tôi muốn đặt lịch khám")
+
+    assert response.response_type == "ask_booking_details"
+    assert response.facility_candidates
+    assert any("vinmec" in _normalize_text(reply) for reply in response.quick_replies)
+
+
+@pytest.mark.asyncio
 async def test_ai_generates_follow_up_triage_and_doctor_summary():
     llm = FakeLLM()
     service = SmartIntakeService(llm=llm)

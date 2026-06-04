@@ -18,6 +18,13 @@ def api_request(method: str, base_url: str, path: str, json: dict | None = None)
         return response.json()
 
 
+def _fetch_facilities(base_url: str) -> list[dict]:
+    try:
+        return api_request("GET", base_url, "/vinmec/facilities")
+    except Exception:
+        return []
+
+
 def send_message(base_url: str, session_id: str, content: str) -> dict:
     return api_request(
         "POST",
@@ -80,6 +87,34 @@ def is_emergency_locked() -> bool:
         st.session_state.get("last_response")
         and st.session_state.last_response.get("response_type") == "emergency_handoff"
     )
+
+
+def _pretty_specialty(value: str) -> str:
+    mapping = {
+        "Noi Tong quat": "Nội tổng quát",
+        "Noi Tieu hoa": "Nội tiêu hoá",
+        "Cap cuu": "Cấp cứu",
+        "Noi Tim mach": "Nội tim mạch",
+        "Noi Than kinh": "Nội thần kinh",
+        "San phu khoa": "Sản phụ khoa",
+        "Tai mui hong": "Tai mũi họng",
+        "Da lieu": "Da liễu",
+        "Chan thuong chinh hinh": "Chấn thương chỉnh hình",
+    }
+    return mapping.get(value, value)
+
+
+def _preview_logs(logs: list[dict]) -> list[dict]:
+    compact = []
+    for log in logs[-8:]:
+        compact.append(
+            {
+                "time": log.get("created_at", "")[:19].replace("T", " "),
+                "event": log.get("event", ""),
+                "detail": log.get("detail", ""),
+            }
+        )
+    return compact
 
 
 def run_normal_booking_flow(base_url: str) -> dict:
@@ -146,6 +181,10 @@ st.caption("AI hỏi bổ sung thông tin, kiểm tra dấu hiệu nguy hiểm, 
 
 with st.sidebar:
     backend_url = st.text_input("Địa chỉ backend", value=DEFAULT_BACKEND_URL)
+    facilities = st.session_state.get("vinmec_facilities")
+    if facilities is None:
+        facilities = _fetch_facilities(backend_url)
+        st.session_state.vinmec_facilities = facilities
     col_health, col_reset = st.columns(2)
     if col_health.button("Kiểm tra"):
         try:
@@ -155,6 +194,22 @@ with st.sidebar:
     if col_reset.button("Chat mới"):
         reset_chat(backend_url)
         st.rerun()
+    with st.expander("Danh sách bệnh viện Vinmec", expanded=False):
+        if facilities:
+            st.dataframe(
+                [
+                    {
+                        "Tên cơ sở": item.get("short_name") or item.get("name"),
+                        "Thành phố": item.get("city", ""),
+                        "Điện thoại": item.get("phone", ""),
+                    }
+                    for item in facilities
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Không tải được danh sách cơ sở.")
 
 tab_chat, tab_dashboard, tab_flows = st.tabs(["Chat", "Dashboard bác sĩ", "Test luồng"])
 
@@ -207,14 +262,51 @@ with tab_chat:
 
     with st.expander("Dữ liệu ca hiện tại", expanded=False):
         if st.session_state.last_response:
-            st.json(
-                {
-                    "case": st.session_state.last_response.get("case"),
-                    "patient": st.session_state.last_response.get("patient"),
-                    "booking": st.session_state.last_response.get("booking"),
-                    "sources": st.session_state.last_response.get("sources"),
-                }
+            case = st.session_state.last_response.get("case") or {}
+            patient = st.session_state.last_response.get("patient") or {}
+            booking = st.session_state.last_response.get("booking") or {}
+            sources = st.session_state.last_response.get("sources") or []
+            st.dataframe(
+                [
+                    {
+                        "Mã ca": case.get("case_id", ""),
+                        "Người bệnh": patient.get("relationship_to_customer", ""),
+                        "Tuổi": patient.get("age_or_birth_year", ""),
+                        "Triệu chứng": case.get("main_symptom", ""),
+                        "Chuyên khoa": _pretty_specialty(case.get("suggested_specialty", "")),
+                        "Cơ sở": case.get("preferred_hospital", ""),
+                        "Giờ hẹn": case.get("preferred_time_detail", case.get("preferred_time", "")),
+                        "Trạng thái": case.get("case_status", ""),
+                        "Ưu tiên": case.get("priority", ""),
+                    }
+                ],
+                use_container_width=True,
+                hide_index=True,
             )
+            if booking:
+                st.write(
+                    f"Booking draft: {booking.get('booking_status', 'none')} | "
+                    f"{booking.get('hospital', '')} | {booking.get('preferred_time_detail', booking.get('preferred_time', ''))}"
+                )
+            if sources:
+                st.write("Nguồn đã dùng:")
+                for source in sources[:2]:
+                    st.write(f"- {source.get('title', '')}")
+            facilities_hint = st.session_state.last_response.get("facility_candidates") or []
+            if facilities_hint:
+                st.write("Cơ sở Vinmec gợi ý:")
+                st.dataframe(
+                    [
+                        {
+                            "Tên": item.get("short_name") or item.get("name", ""),
+                            "Thành phố": item.get("city", ""),
+                            "Điện thoại": item.get("phone", ""),
+                        }
+                        for item in facilities_hint
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
         else:
             st.info("Gửi một tin nhắn để tạo dữ liệu ca.")
 
@@ -249,8 +341,26 @@ with tab_dashboard:
         detail = api_request("GET", backend_url, f"/doctor/cases/{selected_case}")
         logs = api_request("GET", backend_url, f"/debug/cases/{selected_case}/logs")
         st.subheader("Chi tiết ca")
-        st.json(detail)
+        st.dataframe(
+            [
+                {
+                    "Mã ca": detail.get("case_id", ""),
+                    "Người bệnh": detail.get("patient", ""),
+                    "Tuổi": detail.get("age_or_birth_year", ""),
+                    "Triệu chứng": detail.get("main_symptom", ""),
+                    "Chuyên khoa": _pretty_specialty(detail.get("suggested_specialty", "")),
+                    "Cơ sở": detail.get("preferred_hospital", ""),
+                    "Giờ hẹn": detail.get("preferred_time_detail", ""),
+                    "Trạng thái booking": detail.get("booking_status", ""),
+                }
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+        if detail.get("doctor_summary"):
+            st.subheader("Tóm tắt AI")
+            st.write(detail.get("doctor_summary"))
         st.subheader("Nguồn tham khảo và context")
         st.json({"evidence_context": detail.get("evidence_context"), "sources": detail.get("sources")})
         st.subheader("Nhật ký xử lý")
-        st.json(logs)
+        st.dataframe(_preview_logs(logs), use_container_width=True, hide_index=True)

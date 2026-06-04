@@ -115,6 +115,54 @@ def _case_search_phrase(case: "IntakeCase") -> str:
     return case.suggested_specialty
 
 
+def _display_specialty(value: str) -> str:
+    display_map = {
+        "Noi Tong quat": "Nội tổng quát",
+        "Noi Tieu hoa": "Nội tiêu hoá",
+        "Cap cuu": "Cấp cứu",
+        "Noi Tim mach": "Nội tim mạch",
+        "Noi Than kinh": "Nội thần kinh",
+    }
+    return display_map.get(value, value.replace("_", " "))
+
+
+def _normalize_specialty_code(value: str) -> str | None:
+    normalized = _normalize_text(value)
+    specialty_map = {
+        "noi tieu hoa": "Noi Tieu hoa",
+        "noi tong quat": "Noi Tong quat",
+        "cap cuu": "Cap cuu",
+        "noi tim mach": "Noi Tim mach",
+        "noi than kinh": "Noi Than kinh",
+        "san phu khoa": "San phu khoa",
+        "tai mui hong": "Tai mui hong",
+        "da lieu": "Da lieu",
+        "chan thuong chinh hinh": "Chan thuong chinh hinh",
+    }
+    for needle, specialty in specialty_map.items():
+        if needle in normalized:
+            return specialty
+    return None
+
+
+def _specialty_candidates_from_case(case: "IntakeCase") -> list[str]:
+    normalized = _normalize_text(" ".join([case.main_symptom, case.duration, case.severity, " ".join(case.red_flags)]))
+    candidates = {"Noi Tong quat"}
+    symptom_rules = [
+        ("Noi Tieu hoa", ["dau bung", "day hoi", "kho tieu", "da day", "non", "tieu chay", "phan den"]),
+        ("Cap cuu", ["dau nguc", "kho tho", "ngat", "lo mo", "co giat", "non ra mau", "chay mau"]),
+        ("Noi Than kinh", ["dau dau", "chong mat", "te", "yeu nua nguoi", "roi loan y thuc"]),
+        ("Tai mui hong", ["ho", "viem hong", "dau hong", "sot nong", "so mui"]),
+        ("San phu khoa", ["mang thai", "co bau", "phu khoa", "kinh nguyet", "ra mau am dao"]),
+        ("Da lieu", ["ngua", "phat ban", "mun", "di ung", "man da"]),
+        ("Chan thuong chinh hinh", ["chan thuong", "gay", "khop", "sung", "nga", "xoay", "trai khop"]),
+    ]
+    for specialty, terms in symptom_rules:
+        if any(term in normalized for term in terms):
+            candidates.add(specialty)
+    return sorted(candidates)
+
+
 class IntakeSession(BaseModel):
     session_id: str
     case_id: str
@@ -191,8 +239,11 @@ class DoctorCaseRow(BaseModel):
     red_flag_status: str
     priority: str
     suggested_specialty: str
+    preferred_hospital: str
+    preferred_time_detail: str
     booking_status: str
     created_at: str
+    doctor_summary: str = ""
 
 
 class AuditLog(BaseModel):
@@ -211,6 +262,7 @@ class IntakeResponse(BaseModel):
     booking: BookingDraft | None = None
     doctor_summary: str = ""
     sources: list[SourceRef] = Field(default_factory=list)
+    facility_candidates: list[dict] = Field(default_factory=list)
 
 
 class IntakeExtractorTool:
@@ -356,8 +408,6 @@ class MedicalContextSearchTool:
                     collected_sources = self._merge_sources(collected_sources, filtered_sources)
                     chosen_query = plan["query"]
                     break
-                if not collected_sources:
-                    collected_sources = self._merge_sources(collected_sources, sources)
 
             if self.firecrawl and collected_sources:
                 for source in collected_sources[:2]:
@@ -374,6 +424,50 @@ class MedicalContextSearchTool:
             return context, collected_sources[:5] or fallback_sources
         except Exception:
             return fallback_context, fallback_sources
+
+    def list_facility_options(self) -> list[dict]:
+        return [
+            {
+                "facility_id": "vinmec_times_city",
+                "name": "Bệnh viện Đa khoa Quốc tế Vinmec Times City",
+                "short_name": "Vinmec Times City",
+                "city": "Hà Nội",
+                "address": "Số 458 Minh Khai, Hà Nội",
+                "phone": "024 3974 3556",
+            },
+            {
+                "facility_id": "vinmec_smart_city",
+                "name": "Bệnh viện Đa khoa Vinmec Smart City",
+                "short_name": "Vinmec Smart City",
+                "city": "Hà Nội",
+                "address": "Số 2A đường Tây Mỗ, Hà Nội",
+                "phone": "024 3208 5678",
+            },
+            {
+                "facility_id": "vinmec_central_park",
+                "name": "Bệnh viện Đa khoa Quốc tế Vinmec Central Park",
+                "short_name": "Vinmec Central Park",
+                "city": "TP. Hồ Chí Minh",
+                "address": "720A Điện Biên Phủ, TP. Hồ Chí Minh",
+                "phone": "028 3622 1166",
+            },
+            {
+                "facility_id": "vinmec_da_nang",
+                "name": "Bệnh viện Đa khoa Vinmec Đà Nẵng",
+                "short_name": "Vinmec Đà Nẵng",
+                "city": "Đà Nẵng",
+                "address": "Đường 30 tháng 4, Đà Nẵng",
+                "phone": "0236 3711 111",
+            },
+            {
+                "facility_id": "vinmec_can_tho",
+                "name": "Bệnh viện Đa khoa Vinmec Cần Thơ",
+                "short_name": "Vinmec Cần Thơ",
+                "city": "Cần Thơ",
+                "address": "Số 150A Đường 3/2, Cần Thơ",
+                "phone": "0292 368 3003",
+            },
+        ]
 
     def _build_search_plan(self, case: IntakeCase) -> list[dict]:
         symptom_phrase = _case_search_phrase(case)
@@ -451,8 +545,14 @@ class TriageSafetyRuleTool:
 
 
 class ChatResponseSummaryTool:
-    def __init__(self, llm=None):
+    def __init__(self, llm=None, facility_provider=None):
         self.llm = llm
+        self.facility_provider = facility_provider
+
+    def _facility_candidates(self, limit: int = 4) -> list[dict]:
+        if not self.facility_provider:
+            return []
+        return self.facility_provider.list_facility_options()[:limit]
 
     async def build(self, case: IntakeCase, patient: PatientInfo, booking: BookingDraft | None) -> IntakeResponse:
         if case.red_flag_status == "confirmed":
@@ -500,23 +600,27 @@ class ChatResponseSummaryTool:
             )
 
         if case.booking_intent and case.preferred_hospital == "unknown":
+            facility_candidates = self._facility_candidates()
+            quick_replies = [candidate["short_name"] for candidate in facility_candidates[:4]]
+            if not quick_replies:
+                quick_replies = [
+                    "Vinmec Times City",
+                    "Vinmec Smart City",
+                    "Vinmec Central Park",
+                    "Ch?a ch?c",
+                ]
             return IntakeResponse(
                 response_type="ask_booking_details",
                 assistant_text=(
                     "Mình đã ghi nhận nhu cầu đặt lịch. "
-                    "Bạn muốn khám tại cơ sở Vinmec nào và vào khung giờ cụ thể nào? "
-                    "Ví dụ: Vinmec Times City, 15 giờ chiều nay."
+                    "Đây là một số cơ sở Vinmec để bạn chọn; sau đó cho mình biết khung giờ mong muốn nhé."
                 ),
-                quick_replies=[
-                    "Vinmec Times City, 15 giờ chiều nay",
-                    "Vinmec Smart City, 15 giờ chiều nay",
-                    "Vinmec Central Park, sáng mai",
-                    "Chưa chắc",
-                ],
+                quick_replies=quick_replies,
                 case=case,
                 patient=patient,
                 doctor_summary=case.doctor_summary,
                 sources=case.sources,
+                facility_candidates=facility_candidates,
             )
 
         if case.booking_intent and booking is None:
@@ -535,6 +639,7 @@ class ChatResponseSummaryTool:
                 patient=patient,
                 doctor_summary=case.doctor_summary,
                 sources=case.sources,
+                facility_candidates=self._facility_candidates(),
             )
 
         if booking is not None:
@@ -570,7 +675,7 @@ class ChatResponseSummaryTool:
             f"Dựa trên thông tin bạn vừa chia sẻ, mình tạm xếp ca này ở mức ưu tiên {case.priority}. "
             "Đây là nhận định sơ bộ để định hướng, không phải chẩn đoán y khoa. "
             f"Dựa trên triệu chứng hiện tại và nguồn tham khảo đã kiểm tra{source_text}, "
-            f"mình khuyên bạn ưu tiên khám {case.suggested_specialty} tại Vinmec sớm hơn nếu triệu chứng kéo dài, lặp lại hoặc nặng lên. "
+            f"mình khuyên bạn ưu tiên khám {_display_specialty(case.suggested_specialty)} tại Vinmec sớm hơn nếu triệu chứng kéo dài, lặp lại hoặc nặng lên. "
             "Nếu có sốt cao, khó thở, đau ngực, nôn ra máu, đi ngoài phân đen hoặc lơ mơ, hãy đi cấp cứu ngay. "
             "Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat."
         )
@@ -664,7 +769,7 @@ class ChatResponseSummaryTool:
 
         source_text = self._format_sources(case.sources)
         tail = [
-            f"Dựa trên nguồn tham khảo đã kiểm tra{source_text}, mình gợi ý ưu tiên khám {case.suggested_specialty} tại Vinmec sớm hơn nếu triệu chứng kéo dài hoặc tăng mức độ.",
+            f"Dựa trên nguồn tham khảo đã kiểm tra{source_text}, mình gợi ý ưu tiên khám {_display_specialty(case.suggested_specialty)} tại Vinmec sớm hơn nếu triệu chứng kéo dài hoặc tăng mức độ.",
             "Nếu bạn muốn, mình có thể tạo lịch khám nháp ngay trong chat và lưu đầy đủ hồ sơ, giờ khám chi tiết, tóm tắt ca bệnh cùng nguồn tham khảo.",
         ]
         return assistant_text.rstrip() + "\n\n" + " ".join(tail)
@@ -673,6 +778,9 @@ class ChatResponseSummaryTool:
         replacements = {
             "Mình đã kiểm tra ngữ cảnh y tế liên quan": "Dựa trên thông tin bạn vừa chia sẻ",
             "hiện chưa thấy dấu hiệu khẩn cấp rõ ràng": "mình chưa thấy dấu hiệu khẩn cấp rõ ràng",
+            "Noi Tong quat": "Nội tổng quát",
+            "Noi Tieu hoa": "Nội tiêu hoá",
+            "Cap cuu": "Cấp cứu",
         }
         polished = assistant_text
         for source_text, target_text in replacements.items():
@@ -686,7 +794,7 @@ class SmartIntakeService:
         self.extractor = IntakeExtractorTool()
         self.context_search = context_search or MedicalContextSearchTool()
         self.triage = TriageSafetyRuleTool()
-        self.response_builder = ChatResponseSummaryTool(llm=llm)
+        self.response_builder = ChatResponseSummaryTool(llm=llm, facility_provider=self.context_search)
         self.sessions: dict[str, IntakeSession] = {}
         self.patients: dict[str, PatientInfo] = {}
         self.cases: dict[str, IntakeCase] = {}
@@ -738,6 +846,7 @@ class SmartIntakeService:
         if self._has_minimum_intake(case, patient) and case.red_flag_status != "confirmed":
             case.evidence_context, case.sources = await self.context_search.search(case)
             case = await self._classify_with_ai(case, patient)
+            case = await self._choose_specialty_with_ai(case, patient)
         case.doctor_summary = await self._build_doctor_summary(
             case,
             patient,
@@ -795,8 +904,15 @@ class SmartIntakeService:
         for case in self.cases.values():
             patient = self.patients[case.patient_id]
             booking_status = "none"
-            if case.booking_id:
-                booking_status = self.bookings[case.booking_id].booking_status
+            booking = self.bookings.get(case.booking_id) if case.booking_id else None
+            if booking:
+                booking_status = booking.booking_status
+            preferred_hospital = case.preferred_hospital
+            if preferred_hospital == "unknown" and booking:
+                preferred_hospital = booking.hospital
+            preferred_time_detail = case.preferred_time_detail
+            if preferred_time_detail == "unknown" and booking:
+                preferred_time_detail = booking.preferred_time_detail
             rows.append(
                 DoctorCaseRow(
                     case_id=case.case_id,
@@ -806,8 +922,11 @@ class SmartIntakeService:
                     red_flag_status=case.red_flag_status,
                     priority=case.priority,
                     suggested_specialty=case.suggested_specialty,
+                    preferred_hospital=preferred_hospital,
+                    preferred_time_detail=preferred_time_detail,
                     booking_status=booking_status,
                     created_at=case.created_at,
+                    doctor_summary=case.doctor_summary,
                 )
             )
         return rows
@@ -886,7 +1005,7 @@ class SmartIntakeService:
             f"Nguồn tham khảo: {self.response_builder._format_sources(case.sources)}"
         )
         if not self.llm or not use_ai:
-            return fallback
+            return fallback.replace("Noi Tong quat", "Nội tổng quát").replace("Noi Tieu hoa", "Nội tiêu hoá").replace("Cap cuu", "Cấp cứu")
         prompt = (
             "Pha: doctor_summary.\n"
             "Tạo tóm tắt bàn giao cho bác sĩ/CSKH bằng tiếng Việt, 5-8 câu, ngắn gọn nhưng đủ chi tiết.\n"
@@ -898,9 +1017,10 @@ class SmartIntakeService:
             f"Case: {case.model_dump()}\n"
         )
         try:
-            return await self.llm.complete(prompt)
+            summary = await self.llm.complete(prompt)
+            return summary.replace("Noi Tong quat", "Nội tổng quát").replace("Noi Tieu hoa", "Nội tiêu hoá").replace("Cap cuu", "Cấp cứu")
         except Exception:
-            return fallback
+            return fallback.replace("Noi Tong quat", "Nội tổng quát").replace("Noi Tieu hoa", "Nội tiêu hoá").replace("Cap cuu", "Cấp cứu")
 
     async def _classify_with_ai(self, case: IntakeCase, patient: PatientInfo) -> IntakeCase:
         fallback_level = case.priority
@@ -936,5 +1056,39 @@ class SmartIntakeService:
             case.priority = "high"
         return case
 
+    async def _choose_specialty_with_ai(self, case: IntakeCase, patient: PatientInfo) -> IntakeCase:
+        if not self.llm:
+            return case
+
+        allowed_candidates = _specialty_candidates_from_case(case)
+        prompt = """Pha: specialty_selection.
+Select the most appropriate specialty for this intake case.
+Only choose one specialty from: Noi Tieu hoa, Noi Tong quat, Cap cuu, Noi Tim mach, Noi Than kinh, San phu khoa, Tai mui hong, Da lieu, Chan thuong chinh hinh.
+If there is not enough data, keep the current specialty.
+Do not diagnose or prescribe medication.
+Return exactly one line in the format '<specialty>: reason'.
+Allowed specialties: {allowed_candidates}
+Current specialty: {case.suggested_specialty}
+Patient: {patient.model_dump()}
+Case: {case.model_dump()}
+Evidence context: {case.evidence_context}
+Sources: {self.response_builder._format_sources(case.sources)}
+"""
+        try:
+            result = await self.llm.complete(prompt)
+        except Exception:
+            return case
+
+        suggested = _normalize_specialty_code(result or "")
+        if suggested and suggested in allowed_candidates:
+            case.suggested_specialty = suggested
+            return case
+        if case.suggested_specialty not in allowed_candidates and "Noi Tong quat" in allowed_candidates:
+            case.suggested_specialty = "Noi Tong quat"
+        return case
+
     def _log(self, case_id: str, event: str, detail: str) -> None:
-        self.audit_logs.setdefault(case_id, []).append(AuditLog(case_id=case_id, event=event, detail=detail))
+        normalized = re.sub(r"\s+", " ", detail).strip()
+        if len(normalized) > 120:
+            normalized = normalized[:117] + "..."
+        self.audit_logs.setdefault(case_id, []).append(AuditLog(case_id=case_id, event=event, detail=normalized))
