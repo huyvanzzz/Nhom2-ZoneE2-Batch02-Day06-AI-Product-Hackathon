@@ -69,6 +69,8 @@ class IntakeCase(BaseModel):
     associated_symptoms: list[str] = Field(default_factory=list)
     red_flag_status: Literal["unknown", "none", "suspected", "confirmed"] = "unknown"
     red_flags: list[str] = Field(default_factory=list)
+    ai_triage_level: Literal["unknown", "low", "medium", "high"] = "unknown"
+    ai_triage_reason: str = ""
     priority: Literal["low", "medium", "high"] = "medium"
     suggested_specialty: str = "unknown"
     case_status: str = "new"
@@ -135,6 +137,16 @@ class IntakeExtractorTool:
         if any(term in normalized for term in ["da day", "day hoi", "kho tieu", "dau bung"]):
             slots["main_symptom"] = "dau da day, day hoi, kho tieu"
             slots["suggested_specialty"] = "Noi Tieu hoa"
+        elif any(term in normalized for term in ["dau dau", "sot", "sot nong", "ho"]):
+            symptoms = []
+            if "dau dau" in normalized:
+                symptoms.append("dau dau")
+            if "sot" in normalized or "sot nong" in normalized:
+                symptoms.append("sot")
+            if "ho" in normalized:
+                symptoms.append("ho")
+            slots["main_symptom"] = ", ".join(symptoms) or "trieu chung toan than"
+            slots["suggested_specialty"] = "Noi Tong quat"
         elif any(term in normalized for term in ["dau nguc", "kho tho"]):
             slots["main_symptom"] = "dau nguc, kho tho"
             slots["suggested_specialty"] = "Cap cuu"
@@ -202,6 +214,28 @@ class MedicalContextSearchTool:
                     title="Vinmec digestive symptom guidance",
                     url="https://www.vinmec.com/",
                     summary="Trusted context placeholder for demo intake guidance.",
+                )
+            ]
+        elif case.suggested_specialty == "Noi Tong quat":
+            fallback_context = {
+                "warning_signs": [
+                    "sot cao keo dai",
+                    "kho tho",
+                    "lo mo",
+                    "dau dau du doi",
+                ],
+                "safe_guidance_points": [
+                    "uong du nuoc",
+                    "nghi ngoi",
+                    "theo doi nhiet do",
+                ],
+                "possible_specialties": ["Noi Tong quat"],
+            }
+            fallback_sources = [
+                SourceRef(
+                    title="General fever and cough guidance",
+                    url="https://www.vinmec.com/",
+                    summary="General safe guidance placeholder for demo intake.",
                 )
             ]
         else:
@@ -277,14 +311,14 @@ class ChatResponseSummaryTool:
     async def build(self, case: IntakeCase, patient: PatientInfo, booking: BookingDraft | None) -> IntakeResponse:
         if case.red_flag_status == "confirmed":
             text = (
-                "Trieu chung ban mo ta co the la dau hieu can xu ly khan cap. "
-                "Minh khong tiep tuc tu van tu xa trong truong hop nay. "
-                "Ban nen goi cap cuu/hotline Vinmec hoac den co so y te gan nhat ngay."
+                "Triệu chứng bạn mô tả có thể là dấu hiệu cần được xử lý khẩn cấp. "
+                "Mình không tiếp tục tư vấn từ xa trong trường hợp này. "
+                "Bạn nên gọi cấp cứu/hotline Vinmec hoặc đến cơ sở y tế gần nhất ngay."
             )
             return IntakeResponse(
                 response_type="emergency_handoff",
                 assistant_text=text,
-                quick_replies=["Goi hotline", "Toi da hieu"],
+                quick_replies=["Gọi hotline", "Tôi đã hiểu"],
                 case=case,
                 patient=patient,
                 booking=None,
@@ -293,15 +327,30 @@ class ChatResponseSummaryTool:
             )
 
         missing = []
+        if case.main_symptom == "unknown":
+            missing.append("trieu chung")
         if patient.age_or_birth_year == "unknown":
             missing.append("tuoi")
         if case.severity == "unknown":
             missing.append("muc do")
         if missing and not case.booking_intent:
+            if missing == ["tuoi"]:
+                assistant_text = "Cho mình xin tuổi hoặc năm sinh của người bệnh?"
+                quick_replies = ["Tôi 25 tuổi", "Tôi 30 tuổi", "Mẹ tôi 58 tuổi", "Bố tôi 65 tuổi"]
+            elif missing == ["muc do"]:
+                assistant_text = "Mình đã ghi nhận tuổi. Mức độ khó chịu hiện tại của người bệnh là mức nào?"
+                quick_replies = ["Nhẹ", "Vừa", "Nặng", "Rất nặng/không chịu được"]
+            elif missing == ["trieu chung"]:
+                assistant_text = "Bạn mô tả rõ hơn triệu chứng chính giúp mình được không?"
+                quick_replies = ["Đau đầu và sốt", "Đau bụng", "Đau ngực/khó thở", "Ho và sốt"]
+            else:
+                assistant_text = "Mình cần hỏi thêm tuổi người bệnh và mức độ khó chịu hiện tại."
+                quick_replies = ["Nhẹ", "Vừa", "Nặng", "Rất nặng/không chịu được"]
+            assistant_text = await self._ask_more_text(case, patient, missing, assistant_text)
             return IntakeResponse(
                 response_type="ask_more",
-                assistant_text="Minh can hoi them tuoi nguoi benh va muc do kho chiu hien tai.",
-                quick_replies=["Nhe", "Vua", "Nang", "Rat nang/khong chiu duoc"],
+                assistant_text=assistant_text,
+                quick_replies=quick_replies,
                 case=case,
                 patient=patient,
                 doctor_summary=case.doctor_summary,
@@ -311,8 +360,8 @@ class ChatResponseSummaryTool:
         if case.booking_intent and case.preferred_hospital == "unknown":
             return IntakeResponse(
                 response_type="ask_booking_details",
-                assistant_text="Ban muon kham tai co so nao va vao khoang thoi gian nao?",
-                quick_replies=["Vinmec Times City", "Vinmec Central Park", "Vinmec Da Nang", "Chua chac"],
+                assistant_text="Bạn muốn khám tại cơ sở nào và vào khoảng thời gian nào?",
+                quick_replies=["Vinmec Times City", "Vinmec Central Park", "Vinmec Đà Nẵng", "Chưa chắc"],
                 case=case,
                 patient=patient,
                 doctor_summary=case.doctor_summary,
@@ -323,12 +372,12 @@ class ChatResponseSummaryTool:
             return IntakeResponse(
                 response_type="booking_confirmation",
                 assistant_text=(
-                    "Minh xac nhan lai thong tin truoc khi tao lich kham ao: "
-                    f"nguoi benh {patient.relationship_to_customer}, tuoi {patient.age_or_birth_year}, "
-                    f"khoa {case.suggested_specialty}, co so {case.preferred_hospital}, "
-                    f"thoi gian {case.preferred_time}. Ban muon tao lich nhap khong?"
+                    "Mình xác nhận lại thông tin trước khi tạo lịch khám nháp: "
+                    f"người bệnh {patient.relationship_to_customer}, tuổi {patient.age_or_birth_year}, "
+                    f"khoa {case.suggested_specialty}, cơ sở {case.preferred_hospital}, "
+                    f"thời gian {case.preferred_time}. Bạn muốn tạo lịch nháp không?"
                 ),
-                quick_replies=["Xac nhan", "Sua thong tin", "Huy"],
+                quick_replies=["Xác nhận", "Sửa thông tin", "Hủy"],
                 case=case,
                 patient=patient,
                 doctor_summary=case.doctor_summary,
@@ -339,10 +388,10 @@ class ChatResponseSummaryTool:
             return IntakeResponse(
                 response_type="booking_created",
                 assistant_text=(
-                    "Minh da tao lich kham ao nhap. Thong tin trieu chung va tom tat ca benh "
-                    "se duoc luu kem de bac si/CSKH nam truoc khi ho tro."
+                    "Mình đã tạo lịch khám nháp. Thông tin triệu chứng và tóm tắt ca bệnh "
+                    "sẽ được lưu kèm để bác sĩ/CSKH nắm trước khi hỗ trợ."
                 ),
-                quick_replies=["Xem lai thong tin", "Ket thuc"],
+                quick_replies=["Xem lại thông tin", "Kết thúc"],
                 case=case,
                 patient=patient,
                 booking=booking,
@@ -354,7 +403,7 @@ class ChatResponseSummaryTool:
         return IntakeResponse(
             response_type="safe_guidance",
             assistant_text=assistant_text,
-            quick_replies=["Dat lich kham ao", "Chon thoi gian khac", "Toi muon hoi them"],
+            quick_replies=["Đặt lịch khám nháp", "Chọn thời gian khác", "Tôi muốn hỏi thêm"],
             case=case,
             patient=patient,
             doctor_summary=case.doctor_summary,
@@ -363,10 +412,11 @@ class ChatResponseSummaryTool:
 
     async def _safe_guidance_text(self, case: IntakeCase, patient: PatientInfo) -> str:
         fallback = (
-            "Hien chua thay dau hieu khan cap tu thong tin ban cung cap. "
-            "Ban co the an nhe, chia nho bua, tranh do cay/dau mo/ruou bia, "
-            f"va nen kham {case.suggested_specialty} neu trieu chung keo dai. "
-            "Ban co muon minh ho tro tao lich kham ao khong?"
+            "Hiện chưa thấy dấu hiệu khẩn cấp từ thông tin bạn cung cấp. "
+            "Đây là nhận định sơ bộ, không phải chẩn đoán y khoa. "
+            "Bạn có thể nghỉ ngơi, uống đủ nước, theo dõi triệu chứng và "
+            f"nên khám {case.suggested_specialty} nếu triệu chứng kéo dài hoặc nặng lên. "
+            "Bạn có muốn mình hỗ trợ tạo lịch khám nháp không?"
         )
         if not self.llm:
             return fallback
@@ -389,9 +439,33 @@ class ChatResponseSummaryTool:
         except Exception:
             return fallback
 
+    async def _ask_more_text(
+        self,
+        case: IntakeCase,
+        patient: PatientInfo,
+        missing: list[str],
+        fallback: str,
+    ) -> str:
+        if not self.llm:
+            return fallback
+        prompt = (
+            "Ask one follow-up question for a Vinmec intake chat in Vietnamese.\n"
+            "Do not diagnose. Ask only for missing fields and keep it short.\n"
+            f"Missing fields: {missing}\n"
+            f"Current symptom: {case.main_symptom}\n"
+            f"Current duration: {case.duration}\n"
+            f"Current severity: {case.severity}\n"
+            f"Patient age: {patient.age_or_birth_year}\n"
+        )
+        try:
+            return await self.llm.complete(prompt)
+        except Exception:
+            return fallback
+
 
 class SmartIntakeService:
     def __init__(self, llm=None, context_search: MedicalContextSearchTool | None = None):
+        self.llm = llm
         self.extractor = IntakeExtractorTool()
         self.context_search = context_search or MedicalContextSearchTool()
         self.triage = TriageSafetyRuleTool()
@@ -438,9 +512,14 @@ class SmartIntakeService:
         slots = self.extractor.extract(content)
         self._apply_slots(case, patient, slots)
         case = self.triage.classify(case, content)
-        if case.main_symptom != "unknown" and case.red_flag_status != "confirmed":
+        if self._has_minimum_intake(case, patient) and case.red_flag_status != "confirmed":
             case.evidence_context, case.sources = await self.context_search.search(case)
-        case.doctor_summary = self._build_doctor_summary(case, patient)
+            case = await self._classify_with_ai(case, patient)
+        case.doctor_summary = await self._build_doctor_summary(
+            case,
+            patient,
+            use_ai=case.red_flag_status != "confirmed",
+        )
         self.cases[case.case_id] = case
 
         booking = None
@@ -537,6 +616,13 @@ class SmartIntakeService:
         if slots.get("booking_intent"):
             case.booking_intent = True
 
+    def _has_minimum_intake(self, case: IntakeCase, patient: PatientInfo) -> bool:
+        return (
+            case.main_symptom != "unknown"
+            and case.severity != "unknown"
+            and patient.age_or_birth_year != "unknown"
+        )
+
     def _create_booking(self, case: IntakeCase, patient: PatientInfo) -> BookingDraft:
         self._booking_counter += 1
         booking = BookingDraft(
@@ -551,13 +637,63 @@ class SmartIntakeService:
         self._log(case.case_id, "booking_draft_created", booking.booking_id)
         return booking
 
-    def _build_doctor_summary(self, case: IntakeCase, patient: PatientInfo) -> str:
-        return (
-            f"Nguoi benh: {patient.relationship_to_customer}, {patient.age_or_birth_year} tuoi. "
-            f"Trieu chung chinh: {case.main_symptom}. Thoi gian: {case.duration}. "
-            f"Muc do: {case.severity}. Red flag: {case.red_flag_status}. "
-            f"Chuyen khoa goi y: {case.suggested_specialty}. Trang thai: {case.case_status}."
+    async def _build_doctor_summary(
+        self,
+        case: IntakeCase,
+        patient: PatientInfo,
+        use_ai: bool = True,
+    ) -> str:
+        fallback = (
+            f"Người bệnh: {patient.relationship_to_customer}, {patient.age_or_birth_year} tuổi. "
+            f"Triệu chứng chính: {case.main_symptom}. Thời gian: {case.duration}. "
+            f"Mức độ: {case.severity}. Red flag: {case.red_flag_status}. "
+            f"Chuyên khoa gợi ý: {case.suggested_specialty}. Trạng thái: {case.case_status}."
         )
+        if not self.llm or not use_ai:
+            return fallback
+        prompt = (
+            "Create doctor handoff summary in Vietnamese for Vinmec CSKH/doctor dashboard.\n"
+            "Do not diagnose. Include patient relation, age, symptoms, duration, severity, "
+            "red flag status, suggested specialty, booking status, and evidence used.\n"
+            f"Patient: {patient.model_dump()}\n"
+            f"Case: {case.model_dump()}\n"
+        )
+        try:
+            return await self.llm.complete(prompt)
+        except Exception:
+            return fallback
+
+    async def _classify_with_ai(self, case: IntakeCase, patient: PatientInfo) -> IntakeCase:
+        fallback_level = case.priority
+        case.ai_triage_level = fallback_level
+        case.ai_triage_reason = (
+            f"{fallback_level}: phân loại sơ bộ dựa trên thời gian, mức độ và dấu hiệu nguy hiểm đã kiểm tra."
+        )
+        if not self.llm:
+            return case
+        prompt = (
+            "Classify preliminary risk for a Vinmec intake case in Vietnamese.\n"
+            "Return one line in format '<low|medium|high>: reason'. "
+            "Do not diagnose disease and do not override hardcoded red flags.\n"
+            f"Patient: {patient.model_dump()}\n"
+            f"Case: {case.model_dump()}\n"
+            f"Evidence context: {case.evidence_context}\n"
+        )
+        try:
+            result = await self.llm.complete(prompt)
+        except Exception:
+            return case
+        normalized = _normalize_text(result)
+        if normalized.startswith("high"):
+            case.ai_triage_level = "high"
+        elif normalized.startswith("low"):
+            case.ai_triage_level = "low"
+        else:
+            case.ai_triage_level = "medium"
+        case.ai_triage_reason = result
+        if case.ai_triage_level == "high":
+            case.priority = "high"
+        return case
 
     def _log(self, case_id: str, event: str, detail: str) -> None:
         self.audit_logs.setdefault(case_id, []).append(AuditLog(case_id=case_id, event=event, detail=detail))

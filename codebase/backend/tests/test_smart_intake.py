@@ -1,6 +1,6 @@
 import pytest
 
-from vinm_backend.intake import SmartIntakeService
+from vinm_backend.intake import SmartIntakeService, _normalize_text
 from vinm_backend.models import SourceRef
 
 
@@ -10,6 +10,12 @@ class FakeLLM:
 
     async def complete(self, prompt: str):
         self.prompts.append(prompt)
+        if "Ask one follow-up question" in prompt:
+            return "AI hỏi thêm: Người bệnh bao nhiêu tuổi và mức độ khó chịu hiện tại là nhẹ, vừa hay nặng?"
+        if "Classify preliminary risk" in prompt:
+            return "medium: triệu chứng kéo dài nhưng chưa có dấu hiệu khẩn cấp từ thông tin hiện có."
+        if "Create doctor handoff summary" in prompt:
+            return "Tóm tắt AI: Người bệnh có triệu chứng tiêu hóa kéo dài, chưa ghi nhận red flag, nên khám Nội Tiêu hóa."
         return (
             "AI: Hien chua thay dau hieu khan cap. Nen an nhe, uong du nuoc, "
             "theo doi va dat lich Noi Tieu hoa neu keo dai."
@@ -48,7 +54,7 @@ async def test_normal_case_creates_booking_and_dashboard_case():
         "Toi dau da day, day hoi kho tieu 2 tuan nay.",
     )
     assert first.response_type == "ask_more"
-    assert "tuoi" in first.assistant_text.lower()
+    assert "tuoi" in _normalize_text(first.assistant_text)
 
     second = await service.handle_message(
         session.session_id,
@@ -115,7 +121,7 @@ async def test_intake_chat_uses_ai_and_search_context_for_safe_guidance():
 
     assert response.assistant_text.startswith("AI:")
     assert response.sources[0].url == "https://example.com/digestive"
-    assert search.queries == ["dau da day, day hoi, kho tieu", "dau da day, day hoi, kho tieu"]
+    assert search.queries == ["dau da day, day hoi, kho tieu"]
     assert "Evidence context" in llm.prompts[-1]
 
 
@@ -129,3 +135,58 @@ async def test_red_flag_does_not_call_ai_safe_guidance():
 
     assert response.response_type == "emergency_handoff"
     assert llm.prompts == []
+
+
+@pytest.mark.asyncio
+async def test_severity_reply_only_asks_for_missing_age():
+    service = SmartIntakeService()
+    session = service.create_session()
+
+    await service.handle_message(session.session_id, "Toi dau dau sot nong ho 2 tuan nay.")
+    response = await service.handle_message(session.session_id, "Vua")
+
+    assert response.response_type == "ask_more"
+    assert "tuoi" in _normalize_text(response.assistant_text)
+    assert "muc do" not in _normalize_text(response.assistant_text)
+
+
+@pytest.mark.asyncio
+async def test_general_symptom_flow_searches_after_enough_information():
+    llm = FakeLLM()
+    search = FakeMedicalSearch()
+    service = SmartIntakeService(llm=llm, context_search=search)
+    session = service.create_session()
+
+    await service.handle_message(session.session_id, "Toi dau dau sot nong ho 2 tuan nay.")
+    await service.handle_message(session.session_id, "Vua")
+    response = await service.handle_message(session.session_id, "Toi 30 tuoi")
+
+    assert response.response_type == "safe_guidance"
+    assert response.case.main_symptom == "dau dau, sot, ho"
+    assert response.case.suggested_specialty == "Noi Tong quat"
+    assert search.queries == ["dau dau, sot, ho"]
+    assert llm.prompts
+
+
+@pytest.mark.asyncio
+async def test_ai_generates_follow_up_triage_and_doctor_summary():
+    llm = FakeLLM()
+    service = SmartIntakeService(llm=llm)
+    session = service.create_session()
+
+    first = await service.handle_message(
+        session.session_id,
+        "Toi dau da day, day hoi kho tieu 2 tuan nay.",
+    )
+    second = await service.handle_message(
+        session.session_id,
+        "Me toi 58 tuoi, dau vua.",
+    )
+
+    assert first.assistant_text.startswith("AI hỏi thêm")
+    assert second.case.ai_triage_level == "medium"
+    assert second.case.ai_triage_reason.startswith("medium:")
+    assert second.doctor_summary.startswith("Tóm tắt AI:")
+    assert any("Ask one follow-up question" in prompt for prompt in llm.prompts)
+    assert any("Classify preliminary risk" in prompt for prompt in llm.prompts)
+    assert any("Create doctor handoff summary" in prompt for prompt in llm.prompts)
