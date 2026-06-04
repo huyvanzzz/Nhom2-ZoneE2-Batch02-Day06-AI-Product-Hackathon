@@ -1,0 +1,831 @@
+# Vinmec Smart Intake Assistant — Luồng sản phẩm backend-first
+
+## 1. Tư duy sản phẩm
+
+Vinmec Smart Intake Assistant là hệ thống AI tiếp nhận sơ bộ trước khám, hoạt động trực tiếp trong luồng chat.
+
+Mục tiêu không phải là tạo chatbot y tế tổng quát, mà là tạo một **intake engine** giúp:
+
+* Người dùng mô tả triệu chứng dễ hơn.
+* AI hỏi thêm thông tin sơ lược.
+* AI tìm kiếm/ngữ cảnh hóa thông tin y tế liên quan.
+* AI phân loại sơ bộ mức độ nguy hiểm.
+* Hardcode safety rules chặn các tình huống red flag.
+* Nếu không nguy hiểm, AI gợi ý chăm sóc ban đầu an toàn và chuyên khoa phù hợp.
+* Người dùng đặt lịch khám ảo ngay trong chat.
+* Hệ thống lưu thông tin bệnh nhân, lịch sử chat, tóm tắt ca bệnh, thông tin đặt lịch.
+* Bác sĩ/CSKH có dashboard xem các ca đã lưu, bao gồm cả ca thường và ca nguy hiểm.
+
+## 2. Luồng chính đã chỉnh
+
+```text
+Người dùng mô tả triệu chứng
+→ AI hỏi khai thác thông tin sơ lược
+→ AI search/tìm context y tế liên quan
+→ AI nhận định sơ bộ mức độ nguy hiểm
+→ Hardcoded safety rules kiểm tra lại red flag
+→ Nếu nguy hiểm:
+      cảnh báo bệnh nhân
+      tạo ca ưu tiên cho bác sĩ/CSKH
+      lưu lịch sử chat + thông tin ca bệnh
+      hiển thị trên dashboard bác sĩ
+→ Nếu không nguy hiểm:
+      gợi ý chăm sóc ban đầu an toàn
+      gợi ý chuyên khoa phù hợp
+      hỏi người dùng có muốn đặt lịch khám ảo không
+→ Nếu người dùng muốn đặt lịch:
+      hỏi cơ sở khám mong muốn
+      hỏi thời gian mong muốn
+      xác nhận thông tin bệnh nhân
+      tạo booking draft trong chat
+      lưu booking vào ca bệnh
+→ Bác sĩ/CSKH xem dashboard:
+      thông tin bệnh nhân
+      triệu chứng
+      lịch sử chat
+      tóm tắt ca bệnh
+      mức độ ưu tiên
+      chuyên khoa gợi ý
+      thông tin đặt lịch
+```
+
+## 3. Luồng chat chi tiết
+
+### Bước 1: User nhập triệu chứng
+
+Ví dụ:
+
+```text
+Tôi đau dạ dày, đầy hơi khó tiêu 2 tuần nay.
+```
+
+Backend tạo:
+
+```text
+chat_session
+intake_case
+chat_message
+```
+
+AI extract thông tin ban đầu:
+
+```json
+{
+  "main_symptom": "đau dạ dày, đầy hơi, khó tiêu",
+  "duration": "2 tuần",
+  "severity": "unknown",
+  "patient_relation": "unknown",
+  "age_or_birth_year": "unknown",
+  "red_flag_status": "unknown"
+}
+```
+
+---
+
+### Bước 2: AI hỏi khai thác thông tin sơ lược
+
+AI không hỏi quá nhiều. Chỉ hỏi những thông tin cần để phân loại và đặt lịch.
+
+Thông tin tối thiểu cần lấy:
+
+```text
+- Người bệnh là ai?
+- Tuổi/năm sinh?
+- Triệu chứng chính?
+- Thời gian kéo dài?
+- Mức độ?
+- Có triệu chứng đi kèm không?
+- Có dấu hiệu nguy hiểm không?
+```
+
+Ví dụ bot hỏi:
+
+```text
+Mình cần hỏi thêm vài thông tin để định hướng đúng hơn. Người đang bị triệu chứng là bạn hay người thân?
+```
+
+Quick replies:
+
+```text
+- Tôi
+- Bố/mẹ
+- Con
+- Người thân khác
+```
+
+Sau đó:
+
+```text
+Mức độ khó chịu hiện tại khoảng nào?
+```
+
+Quick replies:
+
+```text
+- Nhẹ
+- Vừa
+- Nặng
+- Rất nặng/không chịu được
+```
+
+---
+
+### Bước 3: AI search context y tế liên quan
+
+Sau khi có triệu chứng sơ bộ, AI gọi tool search để lấy context.
+
+Search không dùng để chẩn đoán. Search chỉ dùng để hỗ trợ:
+
+```text
+- Dấu hiệu nào cần chú ý.
+- Khi nào nên đi khám.
+- Gợi ý chăm sóc ban đầu an toàn.
+- Chuyên khoa nào thường phù hợp.
+```
+
+Ví dụ query:
+
+```text
+đau dạ dày đầy hơi khó tiêu kéo dài khi nào cần đi khám
+abdominal pain bloating indigestion when to seek care
+digestive symptoms warning signs
+```
+
+Nguồn ưu tiên:
+
+```text
+- Vinmec
+- CDC
+- NHS
+- Mayo Clinic
+- WHO
+- MedlinePlus
+```
+
+Output search được chuẩn hóa thành evidence context:
+
+```json
+{
+  "warning_signs": [
+    "đau bụng dữ dội",
+    "nôn ra máu",
+    "đi ngoài phân đen",
+    "sốt cao",
+    "ngất/choáng"
+  ],
+  "safe_guidance_context": "Có thể ăn nhẹ, uống đủ nước, tránh đồ cay/dầu mỡ/rượu bia nếu chưa có dấu hiệu nguy hiểm.",
+  "suggested_specialty_context": "Triệu chứng tiêu hóa kéo dài có thể phù hợp khám Nội Tiêu hóa."
+}
+```
+
+---
+
+### Bước 4: AI nhận định sơ bộ + hardcode kiểm tra lại
+
+Sau search, AI đưa ra nhận định sơ bộ:
+
+```json
+{
+  "ai_triage_level": "low | medium | high",
+  "ai_reason": "Triệu chứng tiêu hóa kéo dài 2 tuần, chưa thấy dấu hiệu cấp cứu từ thông tin hiện có."
+}
+```
+
+Sau đó hardcoded rules kiểm tra lại.
+
+Ví dụ hardcode red flag:
+
+```text
+Nếu message/case có:
+- đau ngực
+- khó thở
+- sốt 40 độ
+- chảy máu nhiều
+- đau bụng dữ dội
+- nôn ra máu
+- đi ngoài phân đen
+- ngất/lơ mơ/co giật
+- sưng môi/mặt/lưỡi sau ăn/uống thuốc
+→ override triage = high
+→ emergency handoff
+```
+
+Rule quan trọng:
+
+```text
+Hardcoded red flag rules luôn có quyền ưu tiên cao hơn AI nhận định.
+```
+
+---
+
+## 4. Nhánh nguy hiểm
+
+Nếu phát hiện nguy hiểm:
+
+```text
+AI không gợi ý chăm sóc tại nhà.
+AI không route khám ảo thông thường.
+AI không hỏi đặt lịch thường.
+AI cảnh báo bệnh nhân.
+AI tạo ca ưu tiên trên dashboard bác sĩ/CSKH.
+```
+
+Message cho user:
+
+```text
+Triệu chứng bạn mô tả có thể là dấu hiệu cần được xử lý khẩn cấp. 
+Mình không tiếp tục tư vấn từ xa trong trường hợp này. 
+Bạn nên gọi cấp cứu/hotline Vinmec hoặc đến cơ sở y tế gần nhất ngay.
+```
+
+Case lưu cho bác sĩ:
+
+```json
+{
+  "case_status": "red_flag_detected",
+  "priority": "high",
+  "main_symptom": "đau ngực, khó thở",
+  "red_flag_status": "confirmed",
+  "red_flags": ["đau ngực", "khó thở"],
+  "doctor_summary": "Người dùng báo đau ngực kèm khó thở. Hệ thống đã cảnh báo khẩn cấp và tạo ca ưu tiên cho bác sĩ/CSKH theo dõi."
+}
+```
+
+Dashboard hiển thị:
+
+```text
+Priority: High
+Status: Emergency Handoff
+Action: CSKH/Bác sĩ cần liên hệ nếu có thông tin bệnh nhân.
+```
+
+---
+
+## 5. Nhánh không nguy hiểm
+
+Nếu không có red flag:
+
+AI trả 3 thứ:
+
+```text
+1. Gợi ý chăm sóc ban đầu an toàn.
+2. Gợi ý chuyên khoa phù hợp.
+3. Hỏi người dùng có muốn đặt lịch khám ảo không.
+```
+
+Ví dụ:
+
+```text
+Hiện chưa thấy dấu hiệu khẩn cấp từ thông tin bạn cung cấp. 
+Bạn có thể ăn nhẹ, chia nhỏ bữa, tránh đồ cay/dầu mỡ/rượu bia, uống đủ nước và theo dõi thêm.
+
+Vì triệu chứng đã kéo dài khoảng 2 tuần, bạn nên khám Nội Tiêu hóa để được kiểm tra nguyên nhân.
+
+Bạn có muốn mình hỗ trợ tạo lịch khám ảo với chuyên khoa Nội Tiêu hóa không?
+```
+
+Quick replies:
+
+```text
+- Đặt lịch khám ảo
+- Chọn thời gian khác
+- Tôi muốn hỏi thêm
+```
+
+---
+
+## 6. Đặt lịch ảo nằm trong flow chat
+
+Nếu user chọn “Đặt lịch khám ảo”, AI tiếp tục hỏi trong chat.
+
+### Bước 6.1: Hỏi cơ sở mong muốn
+
+```text
+Bạn muốn khám tại cơ sở nào?
+```
+
+Quick replies:
+
+```text
+- Vinmec Times City
+- Vinmec Central Park
+- Vinmec Đà Nẵng
+- Chưa chắc
+```
+
+### Bước 6.2: Hỏi thời gian mong muốn
+
+```text
+Bạn muốn đặt lịch vào khoảng thời gian nào?
+```
+
+Quick replies:
+
+```text
+- Sáng mai
+- Chiều mai
+- Cuối tuần
+- Chọn sau
+```
+
+### Bước 6.3: Xác nhận thông tin bệnh nhân
+
+```text
+Mình xác nhận lại thông tin trước khi tạo lịch khám ảo:
+- Người bệnh: Mẹ của bạn
+- Tuổi: 58
+- Triệu chứng: Đau dạ dày, đầy hơi, khó tiêu khoảng 2 tuần
+- Chuyên khoa gợi ý: Nội Tiêu hóa
+- Cơ sở: Vinmec Times City
+- Thời gian mong muốn: Sáng mai
+
+Bạn muốn tạo lịch nháp với thông tin này không?
+```
+
+Quick replies:
+
+```text
+- Xác nhận
+- Sửa thông tin
+- Hủy
+```
+
+### Bước 6.4: Tạo booking draft
+
+Sau khi user xác nhận, backend tạo booking draft.
+
+```json
+{
+  "booking_id": "book_001",
+  "case_id": "case_001",
+  "patient_id": "pat_001",
+  "specialty": "Nội Tiêu hóa",
+  "hospital": "Vinmec Times City",
+  "preferred_time": "Sáng mai",
+  "booking_status": "draft",
+  "doctor_summary_attached": true
+}
+```
+
+Bot trả:
+
+```text
+Mình đã tạo lịch khám ảo nháp cho bạn. 
+Thông tin triệu chứng và tóm tắt ca bệnh sẽ được lưu kèm để bác sĩ/CSKH nắm trước khi hỗ trợ.
+```
+
+---
+
+## 7. Dữ liệu cần lưu sau chat
+
+Sau khi kết thúc chat hoặc tạo booking draft, hệ thống lưu:
+
+### 7.1. Patient information
+
+```json
+{
+  "patient_id": "pat_001",
+  "full_name": "unknown",
+  "age_or_birth_year": "58",
+  "gender": "unknown",
+  "relationship_to_customer": "mother",
+  "phone": "optional"
+}
+```
+
+### 7.2. Chat history
+
+```json
+{
+  "session_id": "sess_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Mẹ tôi đau dạ dày, đầy hơi khó tiêu 2 tuần nay."
+    },
+    {
+      "role": "assistant",
+      "content": "Mình cần hỏi thêm..."
+    }
+  ]
+}
+```
+
+### 7.3. Intake case
+
+```json
+{
+  "case_id": "case_001",
+  "main_symptom": "đau dạ dày, đầy hơi, khó tiêu",
+  "duration": "2 tuần",
+  "severity": "vừa",
+  "red_flag_status": "none",
+  "priority": "medium",
+  "suggested_specialty": "Nội Tiêu hóa",
+  "case_status": "booking_requested"
+}
+```
+
+### 7.4. Doctor summary
+
+```text
+Người bệnh: Mẹ của người dùng, 58 tuổi.
+Triệu chứng chính: Đau dạ dày, đầy hơi, khó tiêu.
+Thời gian: Khoảng 2 tuần.
+Mức độ: Vừa.
+Red flag: Chưa phát hiện từ thông tin hiện có.
+Chuyên khoa gợi ý: Nội Tiêu hóa.
+Lý do: Triệu chứng tiêu hóa kéo dài, nên khám chuyên khoa để đánh giá nguyên nhân.
+Trạng thái: Người dùng đã yêu cầu đặt lịch khám ảo.
+```
+
+### 7.5. Booking information
+
+```json
+{
+  "booking_id": "book_001",
+  "specialty": "Nội Tiêu hóa",
+  "hospital": "Vinmec Times City",
+  "preferred_time": "Sáng mai",
+  "booking_status": "draft"
+}
+```
+
+---
+
+## 8. Dashboard bác sĩ/CSKH
+
+Dashboard phải có cả **thông tin ca bệnh** và **thông tin đặt lịch**.
+
+### 8.1. Danh sách ca
+
+Mỗi dòng hiển thị:
+
+```text
+- Case ID
+- Người bệnh
+- Tuổi
+- Triệu chứng chính
+- Red flag status
+- Priority
+- Chuyên khoa gợi ý
+- Trạng thái đặt lịch
+- Thời gian tạo
+```
+
+Ví dụ ca thường:
+
+```text
+Case #001
+Người bệnh: Mẹ user, 58 tuổi
+Triệu chứng: Đau dạ dày, đầy hơi, khó tiêu
+Priority: Medium
+Red flag: None
+Khoa: Nội Tiêu hóa
+Booking: Draft - Sáng mai - Vinmec Times City
+```
+
+Ví dụ ca nguy hiểm:
+
+```text
+Case #002
+Người bệnh: User
+Triệu chứng: Đau ngực, khó thở
+Priority: High
+Red flag: Confirmed
+Booking: Không tạo booking thường
+Status: Emergency Handoff
+```
+
+### 8.2. Chi tiết ca
+
+Trang chi tiết gồm:
+
+```text
+1. Thông tin bệnh nhân
+2. Thông tin đặt lịch
+3. Tóm tắt ca bệnh cho bác sĩ
+4. Lịch sử chat đầy đủ
+5. Slot đã thu thập
+6. Red flag status
+7. Evidence/context đã dùng
+8. Ghi chú bác sĩ/CSKH
+```
+
+Bác sĩ/CSKH có thể xem:
+
+```text
+- Người bệnh là ai?
+- Triệu chứng chính là gì?
+- Kéo dài bao lâu?
+- Có nguy hiểm không?
+- AI đã cảnh báo gì?
+- Đã gợi ý khoa nào?
+- User muốn khám lúc nào, ở đâu?
+- Chat gốc có gì cần xem lại?
+```
+
+---
+
+## 9. Tools đơn giản để hệ thống work
+
+Chỉ cần 4 tools.
+
+### Tool 1: Intake Extractor Tool
+
+Nhiệm vụ:
+
+```text
+Từ chat user, trích xuất thông tin vào intake_case.
+```
+
+Extract:
+
+```text
+- patient_relation
+- age_or_birth_year
+- main_symptom
+- duration
+- severity
+- location
+- associated_symptoms
+- booking_intent
+- preferred_time
+- preferred_hospital
+```
+
+Output:
+
+```json
+{
+  "extracted_slots": {
+    "main_symptom": "đau dạ dày, đầy hơi, khó tiêu",
+    "duration": "2 tuần",
+    "patient_relation": "mother",
+    "booking_intent": false
+  },
+  "missing_slots": ["age_or_birth_year", "severity"]
+}
+```
+
+---
+
+### Tool 2: Medical Context Search Tool
+
+Nhiệm vụ:
+
+```text
+Search thông tin y tế liên quan để lấy context.
+```
+
+Dùng:
+
+```text
+- Tavily cho search nhanh
+- Firecrawl cho scrape nội dung từ URL cụ thể
+```
+
+Nhưng trong backend chỉ gọi là một tool:
+
+```text
+MedicalContextSearchTool
+```
+
+Output:
+
+```json
+{
+  "evidence_context": {
+    "warning_signs": ["đau dữ dội", "nôn ra máu", "đi ngoài phân đen", "sốt cao"],
+    "safe_guidance_points": ["ăn nhẹ", "uống đủ nước", "tránh đồ cay/dầu mỡ"],
+    "possible_specialties": ["Nội Tiêu hóa"]
+  },
+  "sources": [
+    {
+      "title": "Vinmec digestive symptom guidance",
+      "url": "https://vinmec.com/..."
+    }
+  ]
+}
+```
+
+---
+
+### Tool 3: Triage & Safety Rule Tool
+
+Nhiệm vụ:
+
+```text
+Kết hợp AI context + hardcoded rules để phân loại mức độ.
+```
+
+Input:
+
+```json
+{
+  "case": {},
+  "evidence_context": {},
+  "hard_rules": {}
+}
+```
+
+Output:
+
+```json
+{
+  "triage_level": "low | medium | high",
+  "red_flag_status": "none | suspected | confirmed",
+  "priority": "low | medium | high",
+  "action": "continue_intake | ask_more | emergency_handoff | suggest_booking"
+}
+```
+
+Rule:
+
+```text
+Hardcoded rules override AI/search result.
+```
+
+---
+
+### Tool 4: Chat Response & Case Summary Tool
+
+Nhiệm vụ:
+
+```text
+Sinh phản hồi tiếp theo trong chat và cập nhật summary.
+```
+
+Nó xử lý:
+
+```text
+- Hỏi tiếp thông tin còn thiếu
+- Cảnh báo nguy hiểm
+- Gợi ý chăm sóc ban đầu
+- Gợi ý chuyên khoa
+- Hỏi đặt lịch ảo
+- Xác nhận booking draft
+- Tạo doctor summary
+```
+
+Output:
+
+```json
+{
+  "response_type": "booking_confirmation",
+  "assistant_text": "Mình xác nhận lại thông tin trước khi tạo lịch khám ảo...",
+  "quick_replies": ["Xác nhận", "Sửa thông tin", "Hủy"],
+  "doctor_summary": "Người bệnh: mẹ của user, 58 tuổi..."
+}
+```
+
+---
+
+## 10. Orchestration đơn giản
+
+Mỗi message user gửi vào chạy flow sau:
+
+```text
+1. Lưu user message.
+2. Load intake_case hiện tại.
+3. Intake Extractor Tool cập nhật slot.
+4. Medical Context Search Tool search context nếu có triệu chứng chính.
+5. Triage & Safety Rule Tool phân loại nguy hiểm.
+6. Nếu nguy hiểm:
+      tạo emergency response
+      tạo high-priority case
+      không tạo booking thường
+7. Nếu không nguy hiểm:
+      nếu thiếu thông tin thì hỏi tiếp
+      nếu đủ thông tin thì gợi ý safe guidance + specialty
+      nếu user muốn đặt lịch thì tiếp tục hỏi hospital/time trong chat
+      nếu user xác nhận thì tạo booking draft
+8. Chat Response & Case Summary Tool sinh response.
+9. Lưu assistant message.
+10. Lưu/update doctor summary.
+11. Lưu audit log.
+```
+
+---
+
+## 11. API backend tối thiểu
+
+### Chat
+
+```text
+POST /chat/session
+POST /chat/message
+GET /chat/session/{session_id}/messages
+```
+
+### Intake case
+
+```text
+GET /cases/{case_id}
+PATCH /cases/{case_id}
+```
+
+### Booking
+
+```text
+POST /booking/draft
+PATCH /booking/{booking_id}
+GET /booking/{booking_id}
+```
+
+### Doctor dashboard
+
+```text
+GET /doctor/cases
+GET /doctor/cases/{case_id}
+POST /doctor/cases/{case_id}/notes
+PATCH /doctor/cases/{case_id}/status
+```
+
+### Audit
+
+```text
+GET /debug/cases/{case_id}/logs
+```
+
+---
+
+## 12. Điều kiện hệ thống được coi là work
+
+MVP được coi là chạy được nếu pass 4 flow:
+
+### Flow 1: Ca thường + đặt lịch
+
+```text
+User: Tôi đau dạ dày, đầy hơi khó tiêu 2 tuần nay.
+AI: hỏi tuổi/mức độ.
+User: Mẹ tôi 58 tuổi, đau vừa.
+AI: gợi ý chăm sóc ban đầu + Nội Tiêu hóa + hỏi đặt lịch.
+User: Đặt lịch khám ảo.
+AI: hỏi cơ sở/thời gian.
+User: Times City, sáng mai.
+AI: xác nhận.
+User: Xác nhận.
+System: tạo booking draft + lưu dashboard.
+```
+
+### Flow 2: Ca nguy hiểm
+
+```text
+User: Tôi đau ngực và khó thở.
+AI: cảnh báo khẩn cấp.
+System: tạo high-priority case.
+Dashboard: hiện red_flag confirmed.
+```
+
+### Flow 3: User hỏi thay người thân
+
+```text
+User: Mẹ tôi đau bụng mấy ngày nay.
+AI: hỏi tuổi mẹ, mức độ, dấu hiệu đi kèm.
+System: patient_relation = mother.
+Summary: ghi đúng người bệnh là mẹ user.
+```
+
+### Flow 4: Dashboard bác sĩ
+
+```text
+Doctor mở dashboard.
+Doctor thấy:
+- danh sách ca
+- thông tin bệnh nhân
+- lịch đặt khám
+- tóm tắt ca
+- lịch sử chat
+- red flag/priority
+```
+
+## 13. Scope chốt
+
+Build:
+
+```text
+- Chat intake
+- Search context
+- Triage sơ bộ
+- Hardcoded red flag override
+- Safe guidance
+- Specialty suggestion
+- Booking ảo trong chat
+- Patient info
+- Chat history
+- Doctor summary
+- Doctor dashboard có booking info
+```
+
+Không build:
+
+```text
+- Chẩn đoán bệnh
+- Kê đơn thuốc
+- Liều thuốc
+- Đặt lịch thật
+- Thanh toán
+- Gọi bác sĩ realtime
+- Đồng bộ EMR thật
+```

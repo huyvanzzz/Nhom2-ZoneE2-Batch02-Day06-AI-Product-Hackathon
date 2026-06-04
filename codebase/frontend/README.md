@@ -4,19 +4,33 @@ Prototype frontend cho flow hackathon healthcare: mô phỏng một website Vinm
 
 ## Chạy prototype
 
-### Cách nhanh nhất
+### Chạy nối backend Day 6
 
-Mở trực tiếp file `index.html` trong trình duyệt.
-
-### Nếu muốn chạy bằng local server
-
-Từ thư mục `codebase`, chạy:
+1. Start backend ở port mặc định `8000`:
 
 ```powershell
+cd codebase/backend
+..\..\.venv\Scripts\python.exe -m uvicorn vinm_backend.main:app --reload
+```
+
+2. Serve frontend từ thư mục `codebase/frontend`:
+
+```powershell
+cd codebase/frontend
 python -m http.server 4173
 ```
 
-Sau đó truy cập `http://localhost:4173`.
+3. Truy cập `http://localhost:4173`.
+
+Frontend mặc định gọi backend tại `http://127.0.0.1:8000`. Nếu cần đổi, đặt trước khi load `app.js`:
+
+```html
+<script>
+  window.VINMEC_API_BASE_URL = "http://127.0.0.1:8000";
+</script>
+```
+
+Nếu backend chưa chạy, widget sẽ fallback về local mock intake engine để vẫn demo được giao diện.
 
 ## Những gì prototype đang demo
 
@@ -40,7 +54,8 @@ Sau đó truy cập `http://localhost:4173`.
 - HTML5
 - CSS3
 - Vanilla JavaScript
-- Local mock intake engine để frontend có thể demo độc lập trước khi nối backend/API AI thật
+- Backend-first API client gọi `POST /chat/session` và `POST /chat/message`
+- Local mock intake engine làm fallback khi backend chưa chạy
 - Public visual assets loaded from `vinmec.com` to make the background feel closer to the real English homepage during demo
 
 ## File chính
@@ -51,16 +66,7 @@ Sau đó truy cập `http://localhost:4173`.
 
 ## Gợi ý nối backend sau đó
 
-Điểm phù hợp để thay thế local mock là hàm `handleUserInput` trong `app.js`.
-Team backend có thể đổi sang flow:
-
-1. Frontend gửi message lên `POST /chat/message`
-2. Backend trả về:
-   - assistant text
-   - quick replies
-   - case snapshot
-   - doctor summary
-3. Frontend chỉ render lại widget và dashboard preview
+Hiện tại `handleUserInput` đã ưu tiên backend trước. Response backend được map vào widget và dashboard preview gồm assistant text, quick replies, case snapshot, patient fields, booking draft và doctor summary.
 
 ## Phân công
 

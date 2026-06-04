@@ -10,23 +10,6 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="utility-bar">
-    <div class="site-container utility-inner">
-      <div class="utility-links">
-        <a href="#dashboard" data-i18n="utility.demoLayer">Lớp demo AI Intake</a>
-      </div>
-      <div class="utility-links utility-links-right">
-        <a href="#network" data-i18n="utility.searchDoctor">Tìm bác sĩ</a>
-        <a href="#dashboard" data-i18n="utility.customerService">Chăm sóc khách hàng</a>
-
-        <div class="language-switch" aria-label="Language switcher">
-          <button class="language-button" data-lang="en" data-i18n="common.english" type="button">English</button>
-          <button class="language-button is-active" data-lang="vi" data-i18n="common.vietnamese" type="button">Tiếng Việt</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <header class="site-header">
     <div class="site-container header-inner">
       <a class="brand" href="#top" aria-label="Vinmec homepage demo">
@@ -37,17 +20,10 @@
         >
       </a>
 
-      <nav class="site-navigation" aria-label="Primary">
-        <a href="#why" data-i18n="nav.about">Về Vinmec</a>
-        <a href="#network" data-i18n="nav.medicalTourism">Du lịch y tế</a>
-        <a href="#specialties" data-i18n="nav.specialties">Chuyên khoa</a>
-        <a href="#awards" data-i18n="nav.csr">CSR &amp; ESG</a>
-        <a href="#services" data-i18n="nav.services">Dịch vụ &amp; gói khám</a>
-        <a href="#partners" data-i18n="nav.blog">Blog sức khỏe</a>
-        <a href="#dashboard" data-i18n="nav.customers">Dành cho khách hàng</a>
-      </nav>
-
-      <a class="header-button" href="#assistant" data-i18n="header.experience">Trải nghiệm AI Agent</a>
+      <div class="language-switch" aria-label="Language switcher">
+        <button class="language-button" data-lang="en" data-i18n="common.english" type="button">English</button>
+        <button class="language-button is-active" data-lang="vi" data-i18n="common.vietnamese" type="button">Tiếng Việt</button>
+      </div>
     </div>
   </header>
 
@@ -72,8 +48,7 @@
               để tiếp nhận triệu chứng, phát hiện red flag và hỗ trợ đặt lịch ngay trên trang.
             </p>
             <div class="hero-actions">
-              <a class="hero-primary" href="#assistant" data-i18n="hero.openAgent">Mở AI Agent</a>
-              <a class="hero-secondary" href="#dashboard" data-i18n="hero.handoff">Xem handoff cho bác sĩ</a>
+              <button class="hero-secondary" id="doctorLoginOpen" type="button" data-i18n="hero.handoff">Xem handoff cho bác sĩ</button>
             </div>
           </div>
         </div>
@@ -295,12 +270,28 @@
       </div>
     </section>
 
-    <section class="content-section ai-sync-section" id="dashboard">
+    <section class="content-section ai-sync-section is-hidden" id="dashboard" aria-hidden="true">
       <div class="site-container">
         <div class="section-heading">
           <span class="section-kicker" data-i18n="sync.kicker">Lớp phủ hackathon</span>
           <h2 data-i18n="sync.title">Lớp AI Intake đặt trên homepage</h2>
           <p data-i18n="sync.body">Phần nền giờ bám theo cấu trúc homepage Vinmec, còn khu vực phía dưới tiếp tục hiển thị dữ liệu handoff live cho phần demo của bạn.</p>
+          <p class="doctor-identity" id="doctorIdentity"></p>
+        </div>
+
+        <div class="doctor-stats-grid" id="doctorStatsGrid">
+          <article class="doctor-stat-card">
+            <span>Hội thoại hôm nay</span>
+            <strong id="statTotalConversations">0</strong>
+          </article>
+          <article class="doctor-stat-card">
+            <span>Red flag</span>
+            <strong id="statRedFlags">0</strong>
+          </article>
+          <article class="doctor-stat-card">
+            <span>Booking draft</span>
+            <strong id="statBookingDrafts">0</strong>
+          </article>
         </div>
 
         <div class="sync-grid">
@@ -360,22 +351,31 @@
               <p id="queueLiveMeta">Priority sẽ tự đổi theo symptom và red flag.</p>
             </div>
 
-            <div class="queue-card">
-              <span class="queue-badge queue-badge-safe">Medium</span>
-              <strong>Case #VM-204</strong>
-              <p data-i18n="sync.sampleMedium">Mẹ người dùng đau dạ dày 2 tuần, booking draft tại Times City.</p>
-            </div>
-
-            <div class="queue-card">
-              <span class="queue-badge queue-badge-alert">High</span>
-              <strong>Case #VM-205</strong>
-              <p data-i18n="sync.sampleHigh">Người dùng đau ngực, khó thở. Emergency handoff cho CSKH.</p>
-            </div>
+            <div class="doctor-case-list" id="doctorCaseList"></div>
           </aside>
         </div>
       </div>
     </section>
   </main>
+
+  <div class="doctor-login-modal is-hidden" id="doctorLoginModal" aria-hidden="true">
+    <div class="doctor-login-backdrop" id="doctorLoginClose"></div>
+    <section class="doctor-login-panel" aria-labelledby="doctorLoginTitle">
+      <span class="panel-label">Doctor handoff</span>
+      <h2 id="doctorLoginTitle">Đăng nhập bác sĩ</h2>
+      <p>Nhập thông tin trực demo để mở dashboard handoff các ca AI intake.</p>
+
+      <form class="doctor-login-form" id="doctorLoginForm">
+        <label for="doctorName">Họ tên bác sĩ</label>
+        <input id="doctorName" name="doctorName" type="text" value="Bac si Demo Vinmec" required>
+
+        <label for="doctorCode">Mã bác sĩ</label>
+        <input id="doctorCode" name="doctorCode" type="text" value="VINMEC-DR-01" required>
+
+        <button type="submit">Vào dashboard</button>
+      </form>
+    </section>
+  </div>
 
   <button
     class="chat-toggle"
@@ -398,6 +398,12 @@
         <span class="chat-eyebrow" data-i18n="chatUi.eyebrow">Vinmec AI Agent</span>
         <h2 data-i18n="chatUi.title">Tôi có thể giúp gì cho bạn hôm nay?</h2>
       </div>
+      <div class="chat-header-actions">
+        <button
+          class="chat-reset"
+          id="chatReset"
+          type="button"
+        >Ca mới</button>
       <button
         class="chat-minimize"
         id="chatMinimize"
@@ -405,6 +411,7 @@
         aria-label="Thu gọn chat"
         data-i18n-aria-label="chatUi.minimizeAria"
       >−</button>
+      </div>
     </header>
 
     <div class="chat-body" id="chatBody">

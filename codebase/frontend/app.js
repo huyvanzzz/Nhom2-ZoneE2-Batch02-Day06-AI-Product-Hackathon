@@ -5,7 +5,20 @@ const chatInput = document.getElementById("chatInput");
 const chatWidget = document.getElementById("assistant");
 const chatToggle = document.getElementById("chatToggle");
 const chatMinimize = document.getElementById("chatMinimize");
+const chatReset = document.getElementById("chatReset");
 const languageButtons = document.querySelectorAll("[data-lang]");
+const dashboardSection = document.getElementById("dashboard");
+const doctorLoginOpen = document.getElementById("doctorLoginOpen");
+const doctorLoginModal = document.getElementById("doctorLoginModal");
+const doctorLoginClose = document.getElementById("doctorLoginClose");
+const doctorLoginForm = document.getElementById("doctorLoginForm");
+const doctorNameInput = document.getElementById("doctorName");
+const doctorCodeInput = document.getElementById("doctorCode");
+const doctorIdentity = document.getElementById("doctorIdentity");
+const doctorCaseList = document.getElementById("doctorCaseList");
+const statTotalConversations = document.getElementById("statTotalConversations");
+const statRedFlags = document.getElementById("statRedFlags");
+const statBookingDrafts = document.getElementById("statBookingDrafts");
 
 const caseTitle = document.getElementById("caseTitle");
 const priorityPill = document.getElementById("priorityPill");
@@ -21,19 +34,54 @@ const queueLiveMeta = document.getElementById("queueLiveMeta");
 
 const DEFAULT_LANGUAGE = "vi";
 const LANGUAGE_STORAGE_KEY = "vinmec_ai_demo_language";
+const API_BASE_STORAGE_KEY = "vinmec_ai_demo_api_base_url";
+
+function getApiBaseUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const queryApiBase = params.get("api");
+  if (queryApiBase) {
+    const cleanedApiBase = queryApiBase.replace(/\/+$/, "");
+    localStorage.setItem(API_BASE_STORAGE_KEY, cleanedApiBase);
+    return cleanedApiBase;
+  }
+  const storedApiBase = localStorage.getItem(API_BASE_STORAGE_KEY);
+  if (storedApiBase) {
+    return storedApiBase.replace(/\/+$/, "");
+  }
+  if (window.VINMEC_API_BASE_URL) {
+    return window.VINMEC_API_BASE_URL.replace(/\/+$/, "");
+  }
+  return "http://127.0.0.1:8000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 const state = {
   language: getInitialLanguage(),
   caseId: generateCaseId(),
+  backendSessionId: "",
+  backendCaseId: "",
+  backendPatientId: "",
+  backendAvailable: true,
+  doctorAuthenticated: false,
+  doctorName: "",
+  doctorCode: "",
+  doctorCases: [],
+  doctorStats: null,
+  selectedDoctorCaseId: "",
   step: "welcome",
   symptomText: "",
   relationCode: "",
+  relationText: "",
   age: "",
   severityCode: "",
+  severityText: "",
   specialtyKey: "",
+  specialtyText: "",
   triage: "waiting",
   priority: "waiting",
   redFlags: [],
+  redFlagText: "",
   bookingIntent: false,
   preferredHospitalKey: "",
   preferredHospitalText: "",
@@ -41,6 +89,7 @@ const state = {
   preferredTimeText: "",
   bookingStatus: "not_started",
   doctorSummary: "",
+  backendDoctorSummary: "",
   history: []
 };
 
@@ -627,12 +676,12 @@ const DEFAULT_SPECIALTY = {
 const RED_FLAG_RULES = [
   {
     code: "chest_pain",
-    keywords: ["dau nguc", "chest pain"],
+    keywords: ["dau nguc", "tuc nguc", "dau nguc lan tay", "dau nguc lan ham", "dau nguc lan lung", "chest pain"],
     label: { vi: "Đau ngực", en: "Chest pain" }
   },
   {
     code: "shortness_of_breath",
-    keywords: ["kho tho", "shortness of breath", "difficulty breathing"],
+    keywords: ["kho tho", "kho tho tang dan", "moi tim", "shortness of breath", "difficulty breathing", "blue lips"],
     label: { vi: "Khó thở", en: "Shortness of breath" }
   },
   {
@@ -642,7 +691,7 @@ const RED_FLAG_RULES = [
   },
   {
     code: "black_stools",
-    keywords: ["phan den", "black stool", "black stools"],
+    keywords: ["phan den", "di ngoai ra mau", "tieu chay ra mau", "black stool", "black stools", "bloody stool"],
     label: { vi: "Đi ngoài phân đen", en: "Black stools" }
   },
   {
@@ -652,12 +701,12 @@ const RED_FLAG_RULES = [
   },
   {
     code: "fainting",
-    keywords: ["ngat", "lo mo", "faint", "fainting", "confused", "confusion"],
+    keywords: ["ngat", "lo mo", "choang vang", "faint", "fainting", "confused", "confusion"],
     label: { vi: "Ngất/lơ mơ", en: "Fainting or confusion" }
   },
   {
     code: "very_high_fever",
-    keywords: ["sot 40", "fever 40", "40 degree fever"],
+    keywords: ["sot 40", "sot cao khong ha", "ret run", "fever 40", "40 degree fever"],
     label: { vi: "Sốt rất cao", en: "Very high fever" }
   },
   {
@@ -667,8 +716,43 @@ const RED_FLAG_RULES = [
   },
   {
     code: "swelling_after_drug_food",
-    keywords: ["sung moi", "sung mat", "sung luoi", "swollen lips", "swollen face", "swollen tongue"],
+    keywords: ["sung moi", "sung mat", "sung luoi", "sung hong", "phat ban kem kho tho", "swollen lips", "swollen face", "swollen tongue", "throat swelling"],
     label: { vi: "Sưng môi/mặt/lưỡi", en: "Swelling of lips, face, or tongue" }
+  },
+  {
+    code: "stroke_signs",
+    keywords: ["meo mieng", "noi kho", "yeu nua nguoi", "te nua nguoi", "mat thi luc dot ngot"],
+    label: { vi: "Dấu hiệu thần kinh cấp", en: "Acute neurologic signs" }
+  },
+  {
+    code: "severe_headache",
+    keywords: ["dau dau du doi", "dau dau dot ngot", "co gay"],
+    label: { vi: "Đau đầu dữ dội/đột ngột", en: "Severe sudden headache" }
+  },
+  {
+    code: "severe_abdominal",
+    keywords: ["dau bung du doi", "dau bung tang dan", "bung cung", "non lien tuc", "non mau ca phe"],
+    label: { vi: "Đau bụng/nôn nghiêm trọng", en: "Severe abdominal symptoms" }
+  },
+  {
+    code: "urinary_retention",
+    keywords: ["khong tieu duoc", "bi tieu"],
+    label: { vi: "Bí tiểu", en: "Urinary retention" }
+  },
+  {
+    code: "spinal_compression",
+    keywords: ["te vung yen ngua", "mat kiem soat tieu tien", "mat kiem soat dai tien"],
+    label: { vi: "Dấu hiệu chèn ép thần kinh", en: "Spinal compression signs" }
+  },
+  {
+    code: "pregnancy_emergency",
+    keywords: ["mang thai ra mau", "mang thai dau bung", "thai may yeu"],
+    label: { vi: "Dấu hiệu nguy hiểm thai kỳ", en: "Pregnancy warning signs" }
+  },
+  {
+    code: "child_emergency",
+    keywords: ["tre li bi", "tre kho danh thuc", "tre kho tho", "tre co giat", "tre mat nuoc"],
+    label: { vi: "Dấu hiệu nguy hiểm ở trẻ", en: "Child emergency signs" }
   }
 ];
 
@@ -710,6 +794,291 @@ function normalizeForMatch(value) {
 
 function matchesAny(text, keywords) {
   return keywords.some((keyword) => text.includes(keyword));
+}
+
+function knownOrEmpty(value) {
+  return value && value !== "unknown" ? value : "";
+}
+
+function relationCodeFromBackend(value) {
+  return RELATIONS[value] ? value : "";
+}
+
+function severityCodeFromBackend(value) {
+  const normalized = normalizeForMatch(value || "");
+  if (normalized.includes("rat nang")) return "very_severe";
+  if (normalized.includes("nang")) return "severe";
+  if (normalized.includes("vua")) return "moderate";
+  if (normalized.includes("nhe")) return "mild";
+  return "";
+}
+
+function priorityFromBackend(value) {
+  return value && value !== "unknown" ? value : "waiting";
+}
+
+function specialtyKeyFromBackend(value) {
+  const normalized = normalizeForMatch(value || "");
+  if (normalized.includes("tieu hoa")) return "gastro";
+  if (normalized.includes("tim mach") || normalized.includes("cap cuu")) return "cardiology";
+  if (normalized.includes("tai mui hong")) return "respiratory";
+  if (normalized.includes("chan thuong")) return "musculoskeletal";
+  if (normalized.includes("tong quat")) return "general";
+  return "";
+}
+
+function redFlagCodesFromBackend(values = []) {
+  const normalizedValues = values.map((value) => normalizeForMatch(value));
+  return RED_FLAG_RULES
+    .filter((rule) => normalizedValues.some((value) => matchesAny(value, rule.keywords)))
+    .map((rule) => rule.code);
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    },
+    ...options
+  });
+  if (!response.ok) {
+    throw new Error(`Backend request failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+async function ensureBackendSession() {
+  if (state.backendSessionId) return;
+  const session = await apiRequest("/chat/session", { method: "POST" });
+  state.backendSessionId = session.session_id;
+  state.backendCaseId = session.case_id;
+  state.backendPatientId = session.patient_id;
+  state.caseId = session.case_id;
+}
+
+async function sendBackendMessage(text) {
+  await ensureBackendSession();
+  return apiRequest("/chat/message", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: state.backendSessionId,
+      content: text
+    })
+  });
+}
+
+function priorityClass(priority) {
+  if (priority === "high") return "queue-badge-alert";
+  if (priority === "medium") return "queue-badge-safe";
+  return "";
+}
+
+function formatDoctorCaseRow(row) {
+  const patient = knownOrEmpty(row.patient) || "unknown";
+  const age = knownOrEmpty(row.age_or_birth_year) || "unknown";
+  const symptom = knownOrEmpty(row.main_symptom) || "Chưa có triệu chứng";
+  const specialty = knownOrEmpty(row.suggested_specialty) || "Chưa rõ chuyên khoa";
+  const booking = row.booking_status && row.booking_status !== "none"
+    ? `${row.booking_status} · ${knownOrEmpty(row.preferred_hospital) || "chưa chọn cơ sở"} · ${knownOrEmpty(row.preferred_time_detail) || "chưa chọn giờ"}`
+    : "Chưa có booking";
+
+  return {
+    title: `${row.case_id} · ${specialty}`,
+    meta: `${patient} · ${age} tuổi · ${symptom}`,
+    booking,
+    priority: row.priority || "waiting",
+    summary: row.doctor_summary || ""
+  };
+}
+
+function applyDoctorCaseRow(row) {
+  state.selectedDoctorCaseId = row.case_id;
+  state.caseId = row.case_id;
+  state.symptomText = knownOrEmpty(row.main_symptom);
+  state.relationCode = relationCodeFromBackend(row.patient);
+  state.relationText = knownOrEmpty(row.patient);
+  state.age = knownOrEmpty(row.age_or_birth_year);
+  state.severityCode = severityCodeFromBackend(row.severity);
+  state.severityText = knownOrEmpty(row.severity);
+  state.specialtyKey = specialtyKeyFromBackend(row.suggested_specialty);
+  state.specialtyText = knownOrEmpty(row.suggested_specialty);
+  state.priority = priorityFromBackend(row.priority);
+  state.triage = state.priority;
+  state.redFlags = redFlagCodesFromBackend(row.red_flags || []);
+  state.redFlagText = row.red_flag_status === "confirmed" ? "confirmed" : "";
+  state.preferredHospitalText = knownOrEmpty(row.preferred_hospital);
+  state.preferredHospitalKey = normalizeHospital(state.preferredHospitalText);
+  state.preferredTimeText = knownOrEmpty(row.preferred_time_detail);
+  state.preferredTimeKey = normalizeTime(state.preferredTimeText);
+  state.bookingStatus = row.booking_status && row.booking_status !== "none" ? row.booking_status : "not_started";
+  state.backendDoctorSummary = row.doctor_summary || "";
+  state.doctorSummary = state.backendDoctorSummary;
+  syncDashboard();
+}
+
+function renderDoctorCases() {
+  if (!doctorCaseList) return;
+  doctorCaseList.innerHTML = "";
+
+  if (!state.doctorCases.length) {
+    const empty = document.createElement("p");
+    empty.className = "doctor-case-empty";
+    empty.textContent = "Chưa có ca AI intake nào. Khi người dùng chat với AI, case sẽ xuất hiện ở đây.";
+    doctorCaseList.appendChild(empty);
+    return;
+  }
+
+  state.doctorCases.forEach((row) => {
+    const formatted = formatDoctorCaseRow(row);
+    const card = document.createElement("article");
+    card.className = "queue-card";
+
+    const badge = document.createElement("span");
+    badge.className = `queue-badge ${priorityClass(formatted.priority)}`.trim();
+    badge.textContent = formatted.priority.toUpperCase();
+
+    const title = document.createElement("strong");
+    title.textContent = formatted.title;
+
+    const meta = document.createElement("p");
+    meta.textContent = formatted.meta;
+
+    const booking = document.createElement("p");
+    booking.textContent = formatted.booking;
+
+    card.append(badge, title, meta, booking);
+    card.addEventListener("click", () => applyDoctorCaseRow(row));
+    doctorCaseList.appendChild(card);
+  });
+}
+
+function renderDoctorStats() {
+  const stats = state.doctorStats || {};
+  statTotalConversations.textContent = stats.total_conversations ?? 0;
+  statRedFlags.textContent = stats.red_flag_cases ?? 0;
+  statBookingDrafts.textContent = stats.booking_drafts ?? 0;
+}
+
+function withNewCaseReply(replies = []) {
+  return [...replies, t("chat.newCase")];
+}
+
+async function refreshDoctorCases() {
+  if (!state.doctorAuthenticated || !state.backendAvailable) return;
+  try {
+    state.doctorCases = await apiRequest("/doctor/cases");
+    renderDoctorCases();
+  } catch (error) {
+    console.warn("Could not refresh doctor cases.", error);
+  }
+}
+
+async function refreshDoctorStats() {
+  if (!state.doctorAuthenticated || !state.backendAvailable) return;
+  try {
+    state.doctorStats = await apiRequest("/doctor/dashboard/stats");
+    renderDoctorStats();
+  } catch (error) {
+    console.warn("Could not refresh doctor stats.", error);
+  }
+}
+
+function openDoctorLogin() {
+  if (state.doctorAuthenticated) {
+    showDoctorDashboard();
+    return;
+  }
+  doctorLoginModal.classList.remove("is-hidden");
+  doctorLoginModal.setAttribute("aria-hidden", "false");
+  doctorNameInput.focus();
+}
+
+function closeDoctorLogin() {
+  doctorLoginModal.classList.add("is-hidden");
+  doctorLoginModal.setAttribute("aria-hidden", "true");
+}
+
+async function showDoctorDashboard() {
+  dashboardSection.classList.remove("is-hidden");
+  dashboardSection.setAttribute("aria-hidden", "false");
+  doctorIdentity.textContent = `Đang xem với tài khoản: ${state.doctorName} · ${state.doctorCode}`;
+  syncDashboard();
+  await refreshDoctorStats();
+  await refreshDoctorCases();
+  dashboardSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function applyBackendResponse(payload) {
+  const caseData = payload.case || {};
+  const patient = payload.patient || {};
+  const booking = payload.booking || null;
+
+  state.backendAvailable = true;
+  state.backendCaseId = caseData.case_id || state.backendCaseId;
+  state.backendPatientId = patient.patient_id || state.backendPatientId;
+  state.caseId = state.backendCaseId || state.caseId;
+  state.symptomText = knownOrEmpty(caseData.main_symptom) || state.symptomText;
+  state.relationCode = relationCodeFromBackend(patient.relationship_to_customer);
+  state.relationText = knownOrEmpty(patient.relationship_to_customer);
+  state.age = knownOrEmpty(patient.age_or_birth_year);
+  state.severityCode = severityCodeFromBackend(caseData.severity);
+  state.severityText = knownOrEmpty(caseData.severity);
+  state.specialtyKey = specialtyKeyFromBackend(caseData.suggested_specialty);
+  state.specialtyText = knownOrEmpty(caseData.suggested_specialty);
+  state.priority = knownOrEmpty(caseData.priority) || "waiting";
+  state.triage = knownOrEmpty(caseData.ai_triage_level) || state.priority;
+  state.redFlags = redFlagCodesFromBackend(caseData.red_flags || []);
+  state.redFlagText = (caseData.red_flags || []).join(", ");
+  state.preferredHospitalText = knownOrEmpty(caseData.preferred_hospital);
+  state.preferredHospitalKey = normalizeHospital(state.preferredHospitalText);
+  state.preferredTimeText = knownOrEmpty(caseData.preferred_time_detail) || knownOrEmpty(caseData.preferred_time);
+  state.preferredTimeKey = normalizeTime(state.preferredTimeText);
+  state.backendDoctorSummary = payload.doctor_summary || caseData.doctor_summary || "";
+  state.doctorSummary = state.backendDoctorSummary;
+
+  if (booking) {
+    state.bookingStatus = booking.booking_status || "draft";
+    state.preferredHospitalText = knownOrEmpty(booking.hospital) || state.preferredHospitalText;
+    state.preferredHospitalKey = normalizeHospital(state.preferredHospitalText);
+    state.preferredTimeText = knownOrEmpty(booking.preferred_time_detail) || knownOrEmpty(booking.preferred_time) || state.preferredTimeText;
+    state.preferredTimeKey = normalizeTime(state.preferredTimeText);
+  } else if (payload.response_type === "emergency_handoff") {
+    state.bookingStatus = "blocked";
+  } else if (caseData.booking_id) {
+    state.bookingStatus = "draft";
+  }
+
+  const responseSteps = {
+    ask_more: "backendIntake",
+    safe_guidance: "backendGuidance",
+    ask_booking_details: "backendBookingDetails",
+    booking_confirmation: "backendBookingConfirm",
+    booking_created: "bookingComplete",
+    emergency_handoff: "emergency"
+  };
+  state.step = responseSteps[payload.response_type] || "backendIntake";
+}
+
+async function handleBackendInput(text) {
+  if (!state.backendAvailable) return false;
+  try {
+    showTyping();
+    const payload = await sendBackendMessage(text);
+    hideTyping();
+    applyBackendResponse(payload);
+    addMessage("assistant", payload.assistant_text);
+    renderReplies(withNewCaseReply(payload.quick_replies || []));
+    syncDashboard();
+    await refreshDoctorStats();
+    await refreshDoctorCases();
+    return true;
+  } catch (error) {
+    hideTyping();
+    state.backendAvailable = false;
+    console.warn("Backend unavailable; falling back to frontend mock.", error);
+    return false;
+  }
 }
 
 function getRelationReplyLabels() {
@@ -879,7 +1248,8 @@ function respond(text, replies = [], options = {}) {
 function renderReplies(replies = []) {
   quickReplies.innerHTML = "";
 
-  replies.forEach((reply) => {
+  const uniqueReplies = [...new Set(replies.filter(Boolean))];
+  uniqueReplies.forEach((reply) => {
     const button = document.createElement("button");
     button.className = "quick-reply";
     button.type = "button";
@@ -1003,7 +1373,7 @@ function wantsEdit(text) {
 
 function wantsNewCase(text) {
   const lowered = normalizeForMatch(text);
-  return matchesAny(lowered, ["tao ca moi", "new case", "create a new case"]);
+  return matchesAny(lowered, ["ca moi", "tao ca moi", "new case", "create a new case"]);
 }
 
 function wantsReenterSymptoms(text) {
@@ -1012,6 +1382,11 @@ function wantsReenterSymptoms(text) {
 }
 
 function buildDoctorSummary() {
+  if (state.backendDoctorSummary) {
+    state.doctorSummary = state.backendDoctorSummary;
+    return;
+  }
+
   if (!state.symptomText) {
     state.doctorSummary = t("dashboard.summaryEmpty");
     return;
@@ -1028,12 +1403,12 @@ function buildDoctorSummary() {
     : t("dashboard.bookingSentenceNone");
 
   state.doctorSummary = format("dashboard.summaryTemplate", {
-    relation: state.relationCode ? getRelationLabel(state.relationCode) : t("dashboard.notProvided"),
+    relation: state.relationCode ? getRelationLabel(state.relationCode) : state.relationText || t("dashboard.notProvided"),
     age: state.age || t("dashboard.notProvided"),
     symptom: state.symptomText,
-    severity: state.severityCode ? getSeverityLabel(state.severityCode) : t("dashboard.notProvided"),
-    redFlags: redFlagText,
-    specialty: state.specialtyKey ? getSpecialtyLabel(state.specialtyKey) : t("dashboard.notProvided"),
+    severity: state.severityCode ? getSeverityLabel(state.severityCode) : state.severityText || t("dashboard.notProvided"),
+    redFlags: redFlagText || state.redFlagText,
+    specialty: state.specialtyKey ? getSpecialtyLabel(state.specialtyKey) : state.specialtyText || t("dashboard.notProvided"),
     status: state.priority === "high" ? t("dashboard.statusEmergency") : t("dashboard.statusContinue"),
     bookingSentence
   });
@@ -1041,8 +1416,9 @@ function buildDoctorSummary() {
 
 function syncDashboard() {
   buildDoctorSummary();
+  const hasSelectedCase = Boolean(state.symptomText || state.selectedDoctorCaseId || state.backendCaseId);
 
-  caseTitle.textContent = state.symptomText ? `Case #${state.caseId}` : t("dashboard.caseNotStarted");
+  caseTitle.textContent = hasSelectedCase ? `Case #${state.caseId}` : t("dashboard.caseNotStarted");
   priorityPill.textContent = state.priority === "waiting" ? t("dashboard.waiting") : state.priority.toUpperCase();
   priorityPill.className = "priority-pill";
   if (state.priority !== "waiting") {
@@ -1050,10 +1426,10 @@ function syncDashboard() {
   }
 
   symptomValue.textContent = state.symptomText || t("dashboard.notProvided");
-  relationValue.textContent = state.relationCode ? getRelationLabel(state.relationCode) : t("dashboard.notProvided");
+  relationValue.textContent = state.relationCode ? getRelationLabel(state.relationCode) : state.relationText || t("dashboard.notProvided");
   ageValue.textContent = state.age || t("dashboard.notProvided");
-  severityValue.textContent = state.severityCode ? getSeverityLabel(state.severityCode) : t("dashboard.notProvided");
-  specialtyValue.textContent = state.specialtyKey ? getSpecialtyLabel(state.specialtyKey) : t("dashboard.notProvided");
+  severityValue.textContent = state.severityCode ? getSeverityLabel(state.severityCode) : state.severityText || t("dashboard.notProvided");
+  specialtyValue.textContent = state.specialtyKey ? getSpecialtyLabel(state.specialtyKey) : state.specialtyText || t("dashboard.notProvided");
 
   if (state.bookingStatus === "draft") {
     bookingValue.textContent = `${t("dashboard.draftPrefix")} - ${getHospitalLabel(state.preferredHospitalKey, state.preferredHospitalText)} - ${getTimeLabel(state.preferredTimeKey, state.preferredTimeText)}`;
@@ -1065,7 +1441,7 @@ function syncDashboard() {
 
   doctorSummary.textContent = state.doctorSummary;
 
-  if (!state.symptomText) {
+  if (!hasSelectedCase) {
     queueLiveTitle.textContent = t("dashboard.caseNotStarted");
     queueLiveMeta.textContent = t("dashboard.summaryEmpty");
     return;
@@ -1073,16 +1449,16 @@ function syncDashboard() {
 
   queueLiveTitle.textContent = format("dashboard.queueTitleActive", {
     caseId: state.caseId,
-    specialty: state.specialtyKey ? getSpecialtyLabel(state.specialtyKey) : t("dashboard.intakeInProgress")
+    specialty: state.specialtyKey ? getSpecialtyLabel(state.specialtyKey) : state.specialtyText || t("dashboard.intakeInProgress")
   });
 
   queueLiveMeta.textContent = state.priority === "high"
     ? format("dashboard.queueMetaEmergency", {
-        redFlags: getRedFlagLabels(state.redFlags).join(", ")
+        redFlags: getRedFlagLabels(state.redFlags).join(", ") || state.redFlagText || t("dashboard.notProvided")
       })
     : format("dashboard.queueMetaActive", {
-        relation: state.relationCode ? getRelationLabel(state.relationCode) : t("dashboard.patientUnknown"),
-        severity: state.severityCode ? getSeverityLabel(state.severityCode) : t("dashboard.severityUnknown"),
+        relation: state.relationCode ? getRelationLabel(state.relationCode) : state.relationText || t("dashboard.patientUnknown"),
+        severity: state.severityCode ? getSeverityLabel(state.severityCode) : state.severityText || t("dashboard.severityUnknown"),
         bookingStatus: state.bookingStatus === "draft" ? t("dashboard.bookingReady") : t("dashboard.bookingMissing")
       });
 }
@@ -1159,15 +1535,24 @@ function confirmBookingDraft() {
 
 function resetConversation(keepWidgetOpen = true) {
   state.caseId = generateCaseId();
+  state.selectedDoctorCaseId = "";
+  state.backendSessionId = "";
+  state.backendCaseId = "";
+  state.backendPatientId = "";
+  state.backendAvailable = true;
   state.step = "welcome";
   state.symptomText = "";
   state.relationCode = "";
+  state.relationText = "";
   state.age = "";
   state.severityCode = "";
+  state.severityText = "";
   state.specialtyKey = "";
+  state.specialtyText = "";
   state.triage = "waiting";
   state.priority = "waiting";
   state.redFlags = [];
+  state.redFlagText = "";
   state.bookingIntent = false;
   state.preferredHospitalKey = "";
   state.preferredHospitalText = "";
@@ -1175,6 +1560,7 @@ function resetConversation(keepWidgetOpen = true) {
   state.preferredTimeText = "";
   state.bookingStatus = "not_started";
   state.doctorSummary = "";
+  state.backendDoctorSummary = "";
   state.history = [];
 
   messageStream.innerHTML = "";
@@ -1191,7 +1577,13 @@ function resetConversation(keepWidgetOpen = true) {
   }
 }
 
-function handleUserInput(rawText) {
+async function startNewConversation(keepWidgetOpen = true) {
+  resetConversation(keepWidgetOpen);
+  await refreshDoctorStats();
+  await refreshDoctorCases();
+}
+
+async function handleUserInput(rawText) {
   const text = rawText.trim();
   if (!text) return;
 
@@ -1199,7 +1591,13 @@ function handleUserInput(rawText) {
   renderReplies([]);
 
   if (wantsNewCase(text)) {
-    window.setTimeout(() => resetConversation(true), 250);
+    window.setTimeout(() => {
+      startNewConversation(true);
+    }, 250);
+    return;
+  }
+
+  if (await handleBackendInput(text)) {
     return;
   }
 
@@ -1305,20 +1703,20 @@ function handleUserInput(rawText) {
       break;
     case "emergency":
       if (wantsReenterSymptoms(text)) {
-        resetConversation(true);
+        startNewConversation(true);
       } else {
         respond(t("chat.emergencyFollowup"), [t("chat.newCase")]);
       }
       break;
     case "bookingComplete":
       if (wantsNewCase(text)) {
-        resetConversation(true);
+        startNewConversation(true);
       } else {
         respond(t("chat.bookingHold"), [t("chat.newCase")]);
       }
       break;
     default:
-      resetConversation(true);
+      startNewConversation(true);
   }
 }
 
@@ -1333,6 +1731,10 @@ chatMinimize.addEventListener("click", () => {
   chatToggle.style.display = "block";
 });
 
+chatReset.addEventListener("click", () => {
+  startNewConversation(true);
+});
+
 chatToggle.addEventListener("click", () => {
   chatWidget.classList.remove("is-collapsed");
   chatToggle.style.display = "none";
@@ -1340,6 +1742,38 @@ chatToggle.addEventListener("click", () => {
 
 languageButtons.forEach((button) => {
   button.addEventListener("click", () => setLanguage(button.dataset.lang));
+});
+
+doctorLoginOpen.addEventListener("click", openDoctorLogin);
+doctorLoginClose.addEventListener("click", closeDoctorLogin);
+
+doctorLoginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  state.doctorName = doctorNameInput.value.trim();
+  state.doctorCode = doctorCodeInput.value.trim();
+  if (!state.doctorName || !state.doctorCode) return;
+
+  try {
+    const result = await apiRequest("/doctor/login", {
+      method: "POST",
+      body: JSON.stringify({
+        name: state.doctorName,
+        code: state.doctorCode
+      })
+    });
+    if (!result.ok) {
+      window.alert("Mã bác sĩ không đúng. Dùng mã demo: VINMEC-DR-01");
+      return;
+    }
+    state.doctorName = result.doctor.name;
+    state.doctorCode = result.doctor.code;
+    state.doctorAuthenticated = true;
+    closeDoctorLogin();
+    await showDoctorDashboard();
+  } catch (error) {
+    window.alert("Không kết nối được backend doctor login. Kiểm tra server port 8000.");
+    console.warn("Doctor login failed.", error);
+  }
 });
 
 applyStaticTranslations();
