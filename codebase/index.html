@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinmec AI Intake Overlay Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="utility-bar">
+    <div class="site-container utility-inner">
+      <div class="utility-links">
+        <a href="#dashboard" data-i18n="utility.demoLayer">Lớp demo AI Intake</a>
+      </div>
+      <div class="utility-links utility-links-right">
+        <a href="#network" data-i18n="utility.searchDoctor">Tìm bác sĩ</a>
+        <a href="#dashboard" data-i18n="utility.customerService">Chăm sóc khách hàng</a>
+
+        <div class="language-switch" aria-label="Language switcher">
+          <button class="language-button" data-lang="en" data-i18n="common.english" type="button">English</button>
+          <button class="language-button is-active" data-lang="vi" data-i18n="common.vietnamese" type="button">Tiếng Việt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <header class="site-header">
+    <div class="site-container header-inner">
+      <a class="brand" href="#top" aria-label="Vinmec homepage demo">
+        <img
+          src="https://www.vinmec.com/static/uploads/Logo_Vinmec_System_c725c14ffd.png"
+          alt="Vinmec"
+          loading="eager"
+        >
+      </a>
+
+      <nav class="site-navigation" aria-label="Primary">
+        <a href="#why" data-i18n="nav.about">Về Vinmec</a>
+        <a href="#network" data-i18n="nav.medicalTourism">Du lịch y tế</a>
+        <a href="#specialties" data-i18n="nav.specialties">Chuyên khoa</a>
+        <a href="#awards" data-i18n="nav.csr">CSR &amp; ESG</a>
+        <a href="#services" data-i18n="nav.services">Dịch vụ &amp; gói khám</a>
+        <a href="#partners" data-i18n="nav.blog">Blog sức khỏe</a>
+        <a href="#dashboard" data-i18n="nav.customers">Dành cho khách hàng</a>
+      </nav>
+
+      <a class="header-button" href="#assistant" data-i18n="header.experience">Trải nghiệm AI Agent</a>
+    </div>
+  </header>
+
+  <main class="homepage-shell" id="top">
+    <section class="hero-section">
+      <div class="site-container">
+        <div class="hero-banner">
+          <img
+            class="hero-background"
+            src="https://www.vinmec.com/static/uploads/xlarge_Eng_4000x1470_O_cu_5e9a693e0a.jpg"
+            alt="Vinmec hero banner"
+            loading="eager"
+          >
+
+          <div class="hero-overlay"></div>
+
+          <div class="hero-copy">
+            <span class="hero-kicker" data-i18n="hero.kicker">Hệ thống Y tế Quốc tế Vinmec</span>
+            <h1 data-i18n="hero.title">Chăm sóc bằng sự tận tâm, chuyên môn và trí tuệ</h1>
+            <p data-i18n="hero.body">
+              Bản demo này giữ cảm giác quen thuộc của homepage Vinmec, sau đó gắn thêm AI intake agent nổi
+              để tiếp nhận triệu chứng, phát hiện red flag và hỗ trợ đặt lịch ngay trên trang.
+            </p>
+            <div class="hero-actions">
+              <a class="hero-primary" href="#assistant" data-i18n="hero.openAgent">Mở AI Agent</a>
+              <a class="hero-secondary" href="#dashboard" data-i18n="hero.handoff">Xem handoff cho bác sĩ</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-cta-grid" id="services">
+          <article class="cta-card">
+            <div class="cta-icon-wrap">
+              <img src="https://www.vinmec.com/assets/images/icons/home/call.svg" alt="Consult icon" loading="lazy">
+            </div>
+            <div>
+              <h2 data-i18n="cta.consult.title">Tư vấn</h2>
+              <p data-i18n="cta.consult.body">Nhận tư vấn từ đội ngũ chuyên môn của Vinmec.</p>
+            </div>
+          </article>
+
+          <article class="cta-card">
+            <div class="cta-icon-wrap">
+              <img src="https://www.vinmec.com/assets/images/icons/home/appoinment.svg" alt="Booking icon" loading="lazy">
+            </div>
+            <div>
+              <h2 data-i18n="cta.booking.title">Đặt lịch</h2>
+              <p data-i18n="cta.booking.body">Đặt lịch hẹn với Vinmec.</p>
+            </div>
+          </article>
+
+          <article class="cta-card" id="specialties">
+            <div class="cta-icon-wrap">
+              <img src="https://www.vinmec.com/assets/images/icons/home/doctor.svg" alt="Find doctor icon" loading="lazy">
+            </div>
+            <div>
+              <h2 data-i18n="cta.findDoctor.title">Tìm bác sĩ</h2>
+              <p data-i18n="cta.findDoctor.body">Duyệt danh sách bác sĩ và chuyên gia.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section" id="why">
+      <div class="site-container">
+        <div class="section-heading">
+          <span class="section-kicker" data-i18n="why.kicker">Lớp trang chủ</span>
+          <h2 data-i18n="why.title">Vì sao chọn Vinmec?</h2>
+        </div>
+
+        <div class="why-layout">
+          <figure class="why-figure">
+            <img
+              src="https://www.vinmec.com/static/uploads/wepik_export_20230610051550k_Azj_1_1_de0e3052ea.png"
+              alt="Why Vinmec visual"
+              loading="lazy"
+            >
+          </figure>
+
+          <div class="why-grid">
+            <article class="why-card">
+              <div class="why-icon">
+                <img src="https://www.vinmec.com/static/uploads/whyus_01_403f42a936.svg" alt="Top-tier professionals" loading="lazy">
+              </div>
+              <h3 data-i18n="why.card1.title">Đội ngũ chuyên môn hàng đầu</h3>
+              <p data-i18n="why.card1.body">Các chuyên gia, bác sĩ, dược sĩ và điều dưỡng được giới thiệu như một đội ngũ chăm sóc cao cấp lấy người bệnh làm trung tâm.</p>
+            </article>
+
+            <article class="why-card">
+              <div class="why-icon">
+                <img src="https://www.vinmec.com/static/uploads/whyus_02_2a57cb372f.svg" alt="International standards" loading="lazy">
+              </div>
+              <h3 data-i18n="why.card2.title">Tiêu chuẩn quốc tế</h3>
+              <p data-i18n="why.card2.body">Vận hành, quản trị và trải nghiệm bệnh nhân được định vị theo hệ thống hiện đại và chuẩn chăm sóc mang tính toàn cầu.</p>
+            </article>
+
+            <article class="why-card">
+              <div class="why-icon">
+                <img src="https://www.vinmec.com/static/uploads/whyus_03_2f1c276a39.svg" alt="Advanced technologies" loading="lazy">
+              </div>
+              <h3 data-i18n="why.card3.title">Công nghệ tiên tiến</h3>
+              <p data-i18n="why.card3.body">Cơ sở vật chất cao cấp và công nghệ lâm sàng hiện đại được nhấn mạnh như một phần của trải nghiệm y tế 5 sao.</p>
+            </article>
+
+            <article class="why-card">
+              <div class="why-icon">
+                <img src="https://www.vinmec.com/static/uploads/whyus_01_403f42a936.svg" alt="Research and Innovation" loading="lazy">
+              </div>
+              <h3 data-i18n="why.card4.title">Nghiên cứu &amp; đổi mới</h3>
+              <p data-i18n="why.card4.body">Y học hàn lâm, hợp tác quốc tế và đổi mới y khoa được xem là động lực cho điều trị đột phá và chăm sóc tốt hơn.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section" id="awards">
+      <div class="site-container">
+        <div class="section-heading">
+          <span class="section-kicker" data-i18n="awards.kicker">Công nhận</span>
+          <h2 data-i18n="awards.title">Thành tựu và giải thưởng</h2>
+          <p data-i18n="awards.body">Các chứng nhận và ghi nhận quốc tế giúp phần nền của demo tiến gần hơn với homepage Vinmec thực tế.</p>
+        </div>
+
+        <div class="logo-grid">
+          <figure class="logo-card">
+            <img src="https://www.vinmec.com/static/uploads/asian_fc80a62791.jpg" alt="Awards logo 1" loading="lazy">
+          </figure>
+          <figure class="logo-card">
+            <img src="https://www.vinmec.com/static/uploads/HMA_85ca6faa4a.png" alt="Awards logo 2" loading="lazy">
+          </figure>
+          <figure class="logo-card">
+            <img src="https://www.vinmec.com/static/uploads/AABB_489c63440a.jpg" alt="AABB" loading="lazy">
+          </figure>
+          <figure class="logo-card">
+            <img src="https://www.vinmec.com/static/uploads/CAP_702e1fee75.jpg" alt="CAP" loading="lazy">
+          </figure>
+          <figure class="logo-card">
+            <img src="https://www.vinmec.com/static/uploads/ACC_23c8e44638.jpg" alt="ACC" loading="lazy">
+          </figure>
+          <figure class="logo-card">
+            <img src="https://www.vinmec.com/static/uploads/jci_a2b22cbbfe.png" alt="JCI" loading="lazy">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section network-section" id="network">
+      <div class="site-container">
+        <div class="network-layout">
+          <div class="network-intro">
+            <span class="section-kicker" data-i18n="network.kicker">Hệ thống y tế</span>
+            <h2 data-i18n="network.title">Mạng lưới bệnh viện và trung tâm</h2>
+            <p data-i18n="network.body">
+              Trang Vinmec thực nhấn mạnh hệ thống phủ rộng toàn quốc, các bệnh viện đạt chuẩn JCI và tiêu chuẩn an toàn người bệnh cao.
+              Phiên bản này tái hiện đúng lớp kể chuyện đó để AI widget trông như được gắn vào một môi trường Vinmec đáng tin cậy.
+            </p>
+            <a class="inline-link" href="#partners" data-i18n="network.link">Khám phá đối tác</a>
+          </div>
+
+          <div class="hospital-grid">
+            <article class="hospital-card">
+              <img src="https://www.vinmec.com/static/uploads/thumbnail_1_VMTC_b8013944f8.jpg" alt="Vinmec Times City International Hospital" loading="lazy">
+              <div class="hospital-copy">
+                <h3>Vinmec Times City International Hospital</h3>
+                <p data-i18n="network.hospital1">Bệnh viện mũi nhọn trong đô thị với thế mạnh quốc tế và nhiều chuyên khoa sâu.</p>
+              </div>
+            </article>
+
+            <article class="hospital-card">
+              <img src="https://www.vinmec.com/static/uploads/thumbnail_2_VMCP_5543aa8f2d.jpg" alt="Vinmec Central Park International Hospital" loading="lazy">
+              <div class="hospital-copy">
+                <h3>Vinmec Central Park International Hospital</h3>
+                <p data-i18n="network.hospital2">Điểm hiện diện tại TP.HCM với cơ sở vật chất cao cấp và workflow lâm sàng hiện đại.</p>
+              </div>
+            </article>
+
+            <article class="hospital-card">
+              <img src="https://www.vinmec.com/static/uploads/thumbnail_7_VMNT_eae2af37ce.jpg" alt="Vinmec Nha Trang Hospital" loading="lazy">
+              <div class="hospital-copy">
+                <h3>Vinmec Nha Trang Hospital</h3>
+                <p data-i18n="network.hospital3">Mở rộng khả năng tiếp cận dịch vụ tại khu vực du lịch và thành phố biển.</p>
+              </div>
+            </article>
+
+            <article class="hospital-card">
+              <img src="https://www.vinmec.com/static/uploads/thumbnail_5_VMDN_21c250c4c8.jpg" alt="Vinmec Da Nang Hospital" loading="lazy">
+              <div class="hospital-copy">
+                <h3>Vinmec Da Nang Hospital</h3>
+                <p data-i18n="network.hospital4">Đại diện cho miền Trung trong cùng một ngôn ngữ thiết kế bệnh viện quốc tế.</p>
+              </div>
+            </article>
+
+            <article class="hospital-card">
+              <img src="https://www.vinmec.com/static/uploads/thumbnail_VMHP_9c29ddb6d1.jpg" alt="Vinmec Hai Phong Hospital" loading="lazy">
+              <div class="hospital-copy">
+                <h3>Vinmec Hai Phong Hospital</h3>
+                <p data-i18n="network.hospital5">Một mắt xích khác trong câu chuyện mạng lưới chăm sóc trên homepage English.</p>
+              </div>
+            </article>
+
+            <article class="hospital-card">
+              <img src="https://www.vinmec.com/static/uploads/thumbnail_vinmec_ocean_park2_d10ff7a528.jpg" alt="Vinmec Ocean Park 2 International General Hospital" loading="lazy">
+              <div class="hospital-copy">
+                <h3>Vinmec Ocean Park 2 International General Hospital</h3>
+                <p data-i18n="network.hospital6">Hình ảnh cơ sở mới giúp phần nền bám sát hơn với website Vinmec đang vận hành.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section" id="partners">
+      <div class="site-container">
+        <div class="section-heading">
+          <span class="section-kicker" data-i18n="partners.kicker">Kết nối toàn cầu</span>
+          <h2 data-i18n="partners.title">Đối tác</h2>
+        </div>
+
+        <div class="partner-grid">
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_astrazeneca_d3e3b4a691.webp" alt="AstraZeneca" loading="lazy">
+          </figure>
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_cleveland_be5a66bd7f.webp" alt="Cleveland Clinic" loading="lazy">
+          </figure>
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_macquarie_b78149953a.webp" alt="MacQuarie University" loading="lazy">
+          </figure>
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_ge_2aa8d688b3.webp" alt="GE Healthcare" loading="lazy">
+          </figure>
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_metropolian_f201093066.webp" alt="Osaka Metropolitan University" loading="lazy">
+          </figure>
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_roche_5cfeae900e.webp" alt="Roche" loading="lazy">
+          </figure>
+          <figure class="partner-card">
+            <img src="https://www.vinmec.com/static/uploads/thumbnail_SYDNEY_b7a1caf16e.webp" alt="University Of Sydney" loading="lazy">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section ai-sync-section" id="dashboard">
+      <div class="site-container">
+        <div class="section-heading">
+          <span class="section-kicker" data-i18n="sync.kicker">Lớp phủ hackathon</span>
+          <h2 data-i18n="sync.title">Lớp AI Intake đặt trên homepage</h2>
+          <p data-i18n="sync.body">Phần nền giờ bám theo cấu trúc homepage Vinmec, còn khu vực phía dưới tiếp tục hiển thị dữ liệu handoff live cho phần demo của bạn.</p>
+        </div>
+
+        <div class="sync-grid">
+          <article class="sync-panel sync-panel-main">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label" data-i18n="sync.currentCase">Ca hiện tại</span>
+                <h3 id="caseTitle">Ca chưa khởi tạo</h3>
+              </div>
+              <span class="priority-pill" id="priorityPill">Chờ</span>
+            </div>
+
+            <div class="case-grid">
+              <div>
+                <span class="case-label" data-i18n="dashboard.symptom">Triệu chứng chính</span>
+                <strong id="symptomValue">Chưa có</strong>
+              </div>
+              <div>
+                <span class="case-label" data-i18n="dashboard.relation">Người bệnh</span>
+                <strong id="relationValue">Chưa có</strong>
+              </div>
+              <div>
+                <span class="case-label" data-i18n="dashboard.age">Tuổi / năm sinh</span>
+                <strong id="ageValue">Chưa có</strong>
+              </div>
+              <div>
+                <span class="case-label" data-i18n="dashboard.severity">Mức độ</span>
+                <strong id="severityValue">Chưa có</strong>
+              </div>
+              <div>
+                <span class="case-label" data-i18n="dashboard.specialty">Chuyên khoa gợi ý</span>
+                <strong id="specialtyValue">Chưa có</strong>
+              </div>
+              <div>
+                <span class="case-label" data-i18n="dashboard.booking">Đặt lịch</span>
+                <strong id="bookingValue">Chưa bắt đầu</strong>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <span class="case-label" data-i18n="dashboard.summaryLabel">Doctor summary</span>
+              <p id="doctorSummary">Bắt đầu cuộc trò chuyện để xem case summary được dựng tự động từ intake flow.</p>
+            </div>
+          </article>
+
+          <aside class="sync-panel sync-panel-side">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label" data-i18n="sync.queuePreview">Xem nhanh hàng đợi bác sĩ</span>
+                <h3 data-i18n="sync.demoQueue">Hàng đợi demo</h3>
+              </div>
+            </div>
+
+            <div class="queue-card queue-card-live">
+              <span class="queue-badge">Live</span>
+              <strong id="queueLiveTitle">AI Intake đang chờ người dùng</strong>
+              <p id="queueLiveMeta">Priority sẽ tự đổi theo symptom và red flag.</p>
+            </div>
+
+            <div class="queue-card">
+              <span class="queue-badge queue-badge-safe">Medium</span>
+              <strong>Case #VM-204</strong>
+              <p data-i18n="sync.sampleMedium">Mẹ người dùng đau dạ dày 2 tuần, booking draft tại Times City.</p>
+            </div>
+
+            <div class="queue-card">
+              <span class="queue-badge queue-badge-alert">High</span>
+              <strong>Case #VM-205</strong>
+              <p data-i18n="sync.sampleHigh">Người dùng đau ngực, khó thở. Emergency handoff cho CSKH.</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <button
+    class="chat-toggle"
+    id="chatToggle"
+    type="button"
+    aria-label="Mở hoặc thu gọn AI agent"
+    data-i18n-aria-label="chatUi.toggleAria"
+  >
+    <span class="chat-toggle-core"></span>
+  </button>
+
+  <section
+    class="chat-widget is-open"
+    id="assistant"
+    aria-label="Vinmec AI agent"
+    data-i18n-aria-label="chatUi.sectionAria"
+  >
+    <header class="chat-header">
+      <div>
+        <span class="chat-eyebrow" data-i18n="chatUi.eyebrow">Vinmec AI Agent</span>
+        <h2 data-i18n="chatUi.title">Tôi có thể giúp gì cho bạn hôm nay?</h2>
+      </div>
+      <button
+        class="chat-minimize"
+        id="chatMinimize"
+        type="button"
+        aria-label="Thu gọn chat"
+        data-i18n-aria-label="chatUi.minimizeAria"
+      >−</button>
+    </header>
+
+    <div class="chat-body" id="chatBody">
+      <div class="message-stream" id="messageStream" aria-live="polite"></div>
+
+      <div class="quick-replies" id="quickReplies"></div>
+
+      <form class="chat-composer" id="chatForm">
+        <label
+          class="sr-only"
+          for="chatInput"
+          data-i18n="chatUi.formLabel"
+        >Nhập câu hỏi cho AI agent</label>
+        <input
+          id="chatInput"
+          name="chatInput"
+          type="text"
+          placeholder="Ví dụ: Tôi đau dạ dày, đầy hơi 2 tuần nay"
+          data-i18n-placeholder="chatUi.placeholder"
+          autocomplete="off"
+        >
+        <button type="submit" data-i18n="chatUi.send">Gửi</button>
+      </form>
+
+      <p class="chat-disclaimer" data-i18n="chatUi.disclaimer">
+        Demo intake assistant: không thay thế chẩn đoán y khoa. Nếu phát hiện red flag, agent sẽ ưu tiên cảnh báo và đề nghị liên hệ khẩn cấp.
+      </p>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
