@@ -75,6 +75,13 @@ def submit_chat_message(base_url: str, content: str) -> None:
         )
 
 
+def is_emergency_locked() -> bool:
+    return bool(
+        st.session_state.get("last_response")
+        and st.session_state.last_response.get("response_type") == "emergency_handoff"
+    )
+
+
 def run_normal_booking_flow(base_url: str) -> dict:
     session = api_request("POST", base_url, "/chat/session")
     steps = [
@@ -186,8 +193,15 @@ with tab_chat:
                     submit_chat_message(backend_url, reply)
                     st.rerun()
 
-    prompt = st.chat_input("Nhập triệu chứng hoặc phản hồi của bạn...")
-    if prompt:
+    if is_emergency_locked():
+        st.error("Ca bệnh đã được khóa ở trạng thái khẩn cấp. Không tiếp tục chat thêm trong phiên này.")
+        st.info(
+            "Gọi ngay hotline cơ sở Vinmec gần nhất hoặc đến cấp cứu gần nhất. "
+            "Nếu đang ở Việt Nam, hãy gọi cấp cứu địa phương ngay khi cần."
+        )
+
+    prompt = st.chat_input("Nhập triệu chứng hoặc phản hồi của bạn...", disabled=is_emergency_locked())
+    if prompt and not is_emergency_locked():
         submit_chat_message(backend_url, prompt)
         st.rerun()
 

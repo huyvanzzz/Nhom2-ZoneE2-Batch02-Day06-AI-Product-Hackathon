@@ -135,6 +135,22 @@ async def test_red_flag_does_not_call_ai_safe_guidance():
 
     assert response.response_type == "emergency_handoff"
     assert llm.prompts == []
+    assert "hotline" in _normalize_text(response.assistant_text)
+
+
+@pytest.mark.asyncio
+async def test_red_flag_locks_session_and_blocks_follow_up_context_updates():
+    service = SmartIntakeService()
+    session = service.create_session()
+
+    first = await service.handle_message(session.session_id, "Toi dau nguc va kho tho.")
+    messages_before = list(service.list_messages(session.session_id))
+    second = await service.handle_message(session.session_id, "Tôi 30 tuổi")
+
+    assert first.response_type == "emergency_handoff"
+    assert second.response_type == "emergency_handoff"
+    assert second.case.red_flag_status == "confirmed"
+    assert service.list_messages(session.session_id) == messages_before
 
 
 @pytest.mark.asyncio

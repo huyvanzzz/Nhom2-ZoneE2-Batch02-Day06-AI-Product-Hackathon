@@ -10,6 +10,25 @@ from pydantic import BaseModel, Field
 from vinm_backend.models import SourceRef
 
 
+EMERGENCY_CONTACTS = [
+    {
+        "name": "Vinmec Times City",
+        "phone": "024 3974 3556",
+        "address": "Số 458 Minh Khai, Hà Nội",
+    },
+    {
+        "name": "Vinmec Smart City",
+        "phone": "024 3208 5678",
+        "address": "Số 2A đường Tây Mỗ, Hà Nội",
+    },
+    {
+        "name": "Vinmec Central Park",
+        "phone": "028 3622 1166",
+        "address": "720A Điện Biên Phủ, TP. Hồ Chí Minh",
+    },
+]
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -347,15 +366,11 @@ class ChatResponseSummaryTool:
 
     async def build(self, case: IntakeCase, patient: PatientInfo, booking: BookingDraft | None) -> IntakeResponse:
         if case.red_flag_status == "confirmed":
-            text = (
-                "Triệu chứng bạn mô tả có thể là dấu hiệu cần được xử lý khẩn cấp. "
-                "Mình không tiếp tục tư vấn từ xa trong trường hợp này. "
-                "Bạn nên gọi cấp cứu/hotline Vinmec hoặc đến cơ sở y tế gần nhất ngay."
-            )
+            text = self._build_emergency_text(case)
             return IntakeResponse(
                 response_type="emergency_handoff",
                 assistant_text=text,
-                quick_replies=["Gọi hotline", "Tôi đã hiểu"],
+                quick_replies=["Gọi hotline Vinmec", "Đến cấp cứu gần nhất"],
                 case=case,
                 patient=patient,
                 booking=None,
@@ -530,6 +545,27 @@ class ChatResponseSummaryTool:
         top_sources = ", ".join(source.title for source in sources[:3])
         return f" ({top_sources})"
 
+    def _build_emergency_text(self, case: IntakeCase) -> str:
+        preferred_contacts = []
+        if case.preferred_hospital != "unknown":
+            preferred_contacts = [
+                contact for contact in EMERGENCY_CONTACTS if contact["name"] == case.preferred_hospital
+            ]
+        contacts = preferred_contacts or EMERGENCY_CONTACTS[:3]
+        contact_lines = [
+            f"- {contact['name']}: {contact['phone']} - {contact['address']}"
+            for contact in contacts
+        ]
+        return (
+            "Đây là tình huống khẩn cấp. Mình đã khóa phiên chat này để không tiếp tục khai thác thêm ngữ cảnh. "
+            "Bạn không cần gửi thêm triệu chứng trong khung chat.\n\n"
+            "Việc cần làm ngay:\n"
+            "- Gọi cấp cứu địa phương nếu triệu chứng đang nặng lên hoặc bạn thấy không an toàn.\n"
+            "- Gọi hotline Vinmec của một trong các cơ sở dưới đây ngay để được hướng dẫn chuyển tiếp:\n"
+            + "\n".join(contact_lines)
+            + "\n\nNếu bạn không thể gọi, hãy nhờ người nhà đưa đến cơ sở y tế gần nhất ngay lập tức."
+        )
+
     def _enrich_safe_guidance_text(self, assistant_text: str, case: IntakeCase) -> str:
         normalized = _normalize_text(assistant_text)
         if "nguon" in normalized and "vinmec" in normalized and "dat lich" in normalized:
@@ -586,6 +622,12 @@ class SmartIntakeService:
         session = self.sessions[session_id]
         case = self.cases[session.case_id]
         patient = self.patients[session.patient_id]
+        if case.red_flag_status == "confirmed" or case.case_status == "red_flag_detected":
+            self._log(case.case_id, "blocked_user_message", content)
+            response = await self.response_builder.build(case, patient, None)
+            self._log(case.case_id, "assistant_response", response.response_type)
+            return response
+
         self.messages[session_id].append(ChatMessage(role="user", content=content))
         self._log(case.case_id, "user_message", content)
 
