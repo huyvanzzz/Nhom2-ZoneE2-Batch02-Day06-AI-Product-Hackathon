@@ -14,6 +14,13 @@ class ResearchFlow:
         for source in sources[:3]:
             snippets.append(await self.firecrawl.scrape(source.url))
         prompt = f"Question: {request.query}\n\nContext:\n" + "\n".join(snippets)
-        answer = await self.llm.complete(prompt)
-        await self.telegram.notify(answer)
+        try:
+            answer = await self.llm.complete(prompt)
+            await self.telegram.notify(answer)
+        except Exception as exc:
+            return AssistResponse(
+                status="error",
+                answer=f"AI gateway failed: {exc}",
+                sources=sources,
+            )
         return AssistResponse(status="ok", answer=answer, sources=sources)
